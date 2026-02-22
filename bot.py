@@ -23,8 +23,8 @@ MIN_STARS = 10  # Минимум звёзд для пополнения
 MIN_RUB = MIN_STARS * STAR_TO_RUB  # 13 рублей
 
 # ID картинок (замени на свои после загрузки)
-MAIN_MENU_IMAGE = 'AgACAgIAAxkBAAIBzGc7pj6l8XQ5Jk5m7N8Q9R2s3LmYAAI13jEUmLvZSF8r9LmN8Q9R2s3LmYAAQAD'
-CASE_IMAGE = 'AgACAgIAAxkBAAIBzWc7pj6l8XQ5Jk5m7N8Q9R2s3LmYAAI13jEUmLvZSF8r9LmN8Q9R2s3LmYAAQAD'
+MAIN_MENU_IMAGE = ''
+CASE_IMAGE = ''
 
 # Настройка логирования
 logging.basicConfig(
@@ -1640,3 +1640,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
