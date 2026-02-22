@@ -5,7 +5,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, PreCheckoutQueryHandler
 from telegram.constants import ParseMode
 import os
@@ -20,6 +20,15 @@ CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 ADMIN_IDS = [5697184715]  # ТВОЙ ID
 
 BOT_NAME = "FEENDY STARS"
+
+# Глобальные переменные для хранения ID картинок
+WELCOME_IMAGE_ID = None
+CASE_IMAGE_ID = None
+
+# Курсы валют
+RUB_PER_STAR = 1.3        # 1 звезда в боте = 1.3 рубля
+RUB_PER_TON = 105          # 1 TON = 105 рублей
+TON_PER_STAR = RUB_PER_STAR / RUB_PER_TON  # 1 звезда = 0.01238 TON
 
 # Настройка логирования
 logging.basicConfig(
@@ -39,24 +48,36 @@ class CryptoBotAPI:
             "Content-Type": "application/json"
         }
     
-    def create_invoice(self, amount, currency="TON", description="Пополнение баланса FEENDY STARS"):
+    def create_invoice(self, stars_amount, currency="TON", description="Пополнение баланса FEENDY STARS"):
         """Создание счета для пополнения через CryptoBot"""
         try:
             url = f"{CRYPTOBOT_API_URL}/createInvoice"
+            
+            # Конвертируем звезды в TON (1 звезда = 1.3 рубля = 0.01238 TON)
+            ton_amount = round(stars_amount * TON_PER_STAR, 2)
+            rub_amount = stars_amount * RUB_PER_STAR
+            
             payload = {
                 "asset": currency,
-                "amount": str(amount),
-                "description": description,
+                "amount": str(ton_amount),
+                "description": f"{description} на {stars_amount} ★ (≈ {rub_amount:.2f} руб)",
                 "paid_btn_name": "return",
                 "paid_btn_url": "https://t.me/YOUR_BOT_USERNAME",
-                "payload": f"deposit_{amount}_{int(time.time())}"
+                "payload": f"crypto_{stars_amount}_{int(time.time())}"
             }
             
-            response = requests.post(url, headers=self.headers, json=payload)
+            logger.info(f"Creating CryptoBot invoice: {stars_amount} ★ = {ton_amount} TON (≈ {rub_amount:.2f} руб)")
+            response = requests.post(url, headers=self.headers, json=payload, timeout=10)
+            
             if response.status_code == 200:
                 data = response.json()
+                logger.info(f"CryptoBot response: {data}")
                 if data.get('ok'):
                     return data['result']
+                else:
+                    logger.error(f"CryptoBot error: {data}")
+            else:
+                logger.error(f"CryptoBot HTTP error: {response.status_code} - {response.text}")
             return None
         except Exception as e:
             logger.error(f"CryptoBot API error: {e}")
@@ -66,7 +87,7 @@ class CryptoBotAPI:
         """Получение баланса бота в CryptoBot"""
         try:
             url = f"{CRYPTOBOT_API_URL}/getBalance"
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('ok'):
@@ -86,7 +107,7 @@ class CryptoBotAPI:
                 "amount": str(amount),
                 "spend_id": f"withdraw_{user_id}_{int(time.time())}"
             }
-            response = requests.post(url, headers=self.headers, json=payload)
+            response = requests.post(url, headers=self.headers, json=payload, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('ok', False)
@@ -94,6 +115,23 @@ class CryptoBotAPI:
         except Exception as e:
             logger.error(f"CryptoBot transfer error: {e}")
             return False
+    
+    def get_invoice(self, invoice_id):
+        """Получение информации о счете"""
+        try:
+            url = f"{CRYPTOBOT_API_URL}/getInvoices"
+            payload = {
+                "invoice_ids": [invoice_id]
+            }
+            response = requests.post(url, headers=self.headers, json=payload, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('ok') and data.get('result'):
+                    return data['result']['items'][0]
+            return None
+        except Exception as e:
+            logger.error(f"CryptoBot get invoice error: {e}")
+            return None
 
 crypto = CryptoBotAPI(CRYPTOBOT_API_KEY)
 
@@ -125,6 +163,15 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 total_withdrawn INTEGER DEFAULT 0,
                 total_lost INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # Таблица для хранения ID картинок
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS images (
+                key TEXT PRIMARY KEY,
+                file_id TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -203,6 +250,7 @@ class Database:
         self.conn.commit()
         self._init_cases()
         self._init_settings()
+        self._load_images()
     
     def _init_cases(self):
         cases = [
@@ -210,14 +258,14 @@ class Database:
                 'name': BOT_NAME,
                 'price': 35,
                 'items': [
-                    {'name': 'Сердце', 'chance': 60, 'value': 15},
-                    {'name': 'Роза', 'chance': 17, 'value': 25},
-                    {'name': 'Ракета', 'chance': 7, 'value': 50},
-                    {'name': 'Цветы', 'chance': 7, 'value': 50},
-                    {'name': 'Кольцо', 'chance': 3, 'value': 100},
-                    {'name': 'Алмаз', 'chance': 1.5, 'value': 100},
-                    {'name': 'Люлом', 'chance': 1, 'value': 325},
-                    {'name': 'Chyn Dogg', 'chance': 1, 'value': 425}
+                    {'name': '❤️ Сердце', 'chance': 60, 'value': 15},
+                    {'name': '🌹 Роза', 'chance': 17, 'value': 25},
+                    {'name': '🚀 Ракета', 'chance': 7, 'value': 50},
+                    {'name': '🌸 Цветы', 'chance': 7, 'value': 50},
+                    {'name': '💍 Кольцо', 'chance': 3, 'value': 100},
+                    {'name': '💎 Алмаз', 'chance': 1.5, 'value': 100},
+                    {'name': '🎭 Люлом', 'chance': 1, 'value': 325},
+                    {'name': '🐕 Chyn Dogg', 'chance': 1, 'value': 425}
                 ]
             }
         ]
@@ -257,7 +305,9 @@ class Database:
             'withdrawal_fee': '0',
             'case_price': '35',
             'house_edge': '10',
-            'stars_rate': '1'  # 1 звезда = 1 балл
+            'stars_rate': '1',        # 1 звезда в боте = 1 звезда Telegram
+            'rub_per_star': '1.3',    # 1 звезда = 1.3 рубля
+            'rub_per_ton': '105'       # 1 TON = 105 рублей
         }
         for key, value in settings.items():
             self.cursor.execute(
@@ -265,6 +315,34 @@ class Database:
                 (key, value)
             )
         self.conn.commit()
+    
+    def _load_images(self):
+        """Загрузка ID картинок из базы данных"""
+        global WELCOME_IMAGE_ID, CASE_IMAGE_ID
+        
+        self.cursor.execute('SELECT value FROM settings WHERE key = ?', ('welcome_image',))
+        result = self.cursor.fetchone()
+        if result:
+            WELCOME_IMAGE_ID = result[0]
+        
+        self.cursor.execute('SELECT value FROM settings WHERE key = ?', ('case_image',))
+        result = self.cursor.fetchone()
+        if result:
+            CASE_IMAGE_ID = result[0]
+    
+    def save_image(self, key, file_id):
+        """Сохранение ID картинки в базу данных"""
+        global WELCOME_IMAGE_ID, CASE_IMAGE_ID
+        
+        self.cursor.execute('''
+            INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)
+        ''', (key, file_id))
+        self.conn.commit()
+        
+        if key == 'welcome_image':
+            WELCOME_IMAGE_ID = file_id
+        elif key == 'case_image':
+            CASE_IMAGE_ID = file_id
     
     def get_user(self, user_id):
         self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -450,8 +528,8 @@ class Database:
         if result:
             user_id, amount = result
             self.update_balance(user_id, amount)
-            return True
-        return False
+            return user_id, amount
+        return None, None
     
     def add_crypto_payment(self, user_id, amount, invoice_id):
         """Добавление платежа через CryptoBot"""
@@ -473,8 +551,8 @@ class Database:
         if result:
             user_id, amount = result
             self.update_balance(user_id, amount)
-            return True
-        return False
+            return user_id, amount
+        return None, None
     
     # ================== ВЫВОД ==================
     
@@ -725,7 +803,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Выберите действие:"
     )
     
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+    # Отправляем с картинкой если есть
+    if WELCOME_IMAGE_ID:
+        await update.message.reply_photo(
+            photo=WELCOME_IMAGE_ID,
+            caption=text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -825,7 +912,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "deposit_menu":
         text = (
             f"💰 *Пополнение баланса*\n\n"
-            f"Выберите способ пополнения:"
+            f"Выберите способ пополнения:\n\n"
+            f"⭐ Telegram Stars — 1★ = 1 Telegram Star\n"
+            f"💎 CryptoBot (TON) — 1★ = 1.3 руб (≈ {TON_PER_STAR:.4f} TON)\n"
+            f"Минимальная сумма: 10 ★"
         )
         
         keyboard = [
@@ -837,7 +927,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == "deposit_stars_menu":
-        text = "⭐ *Пополнение Telegram Stars*\n\nВыберите сумму:"
+        text = "⭐ *Пополнение Telegram Stars*\n\nВыберите сумму (1★ = 1 Telegram Star):"
         keyboard = [
             [
                 InlineKeyboardButton("10 ⭐", callback_data="stars_10"),
@@ -871,40 +961,64 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     elif data == "deposit_crypto_menu":
-        text = "💎 *Пополнение через CryptoBot*\n\nВыберите сумму в TON:"
+        text = (
+            f"💎 *Пополнение через CryptoBot*\n\n"
+            f"1★ = 1.3 рубля\n"
+            f"1 TON = 105 рублей\n\n"
+            f"Выберите сумму:"
+        )
         keyboard = [
             [
-                InlineKeyboardButton("10 TON", callback_data="crypto_10"),
-                InlineKeyboardButton("25 TON", callback_data="crypto_25"),
-                InlineKeyboardButton("50 TON", callback_data="crypto_50")
+                InlineKeyboardButton("10 ★ (13 руб)", callback_data="crypto_10"),
+                InlineKeyboardButton("25 ★ (32.5 руб)", callback_data="crypto_25"),
+                InlineKeyboardButton("50 ★ (65 руб)", callback_data="crypto_50")
             ],
             [
-                InlineKeyboardButton("100 TON", callback_data="crypto_100"),
-                InlineKeyboardButton("250 TON", callback_data="crypto_250"),
-                InlineKeyboardButton("500 TON", callback_data="crypto_500")
+                InlineKeyboardButton("100 ★ (130 руб)", callback_data="crypto_100"),
+                InlineKeyboardButton("250 ★ (325 руб)", callback_data="crypto_250"),
+                InlineKeyboardButton("500 ★ (650 руб)", callback_data="crypto_500")
             ],
             [InlineKeyboardButton("◀️ Назад", callback_data="deposit_menu")]
         ]
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("crypto_"):
-        amount = int(data.replace("crypto_", ""))
+        stars_amount = int(data.replace("crypto_", ""))
+        rub_amount = stars_amount * RUB_PER_STAR
+        ton_amount = round(stars_amount * TON_PER_STAR, 2)
         
-        invoice = crypto.create_invoice(amount, "TON", f"Пополнение {BOT_NAME} на {amount} TON")
+        invoice = crypto.create_invoice(stars_amount, "TON", f"Пополнение {BOT_NAME} на {stars_amount} ★")
         
         if invoice:
             pay_url = invoice['pay_url']
             invoice_id = invoice['invoice_id']
             
-            db.add_crypto_payment(user_id, amount, invoice_id)
+            db.add_crypto_payment(user_id, stars_amount, invoice_id)
             
             text = (
-                f"💎 *Пополнение на {amount} TON*\n\n"
-                f"[🔗 Оплатить {amount} TON]({pay_url})\n\n"
+                f"💎 *Пополнение на {stars_amount} ★*\n\n"
+                f"💰 Сумма в рублях: {rub_amount:.2f} руб\n"
+                f"💎 К оплате: {ton_amount} TON\n"
+                f"🔗 [Оплатить через CryptoBot]({pay_url})\n\n"
                 f"После оплаты баланс будет зачислен автоматически."
             )
             keyboard = [[InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]]
             await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+            
+            # Уведомление админу о создании счета
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(
+                        admin_id,
+                        f"💰 *Создан счет на пополнение*\n\n"
+                        f"👤 Пользователь: @{user[1] or user_id}\n"
+                        f"💎 Сумма: {stars_amount} ★\n"
+                        f"💵 К оплате: {ton_amount} TON (≈ {rub_amount:.2f} руб)\n"
+                        f"🆔 Invoice: {invoice_id}",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                except:
+                    pass
         else:
             await query.edit_message_text("❌ Ошибка создания счета. Попробуйте позже.")
     
@@ -1072,7 +1186,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton(f"📦 Открыть ({case[2]} ★)", callback_data=f"open_case_{case[0]}")],
                 [InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]
             ]
-            await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+            
+            # Отправляем с картинкой если есть
+            if CASE_IMAGE_ID:
+                await query.edit_message_media(
+                    media=InputMediaPhoto(
+                        media=CASE_IMAGE_ID,
+                        caption=text,
+                        parse_mode=ParseMode.MARKDOWN
+                    ),
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("open_case_"):
         case_id = int(data.replace("open_case_", ""))
@@ -1152,10 +1278,53 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⏳ Заявки на вывод", callback_data="admin_withdrawals")],
             [InlineKeyboardButton("🔨 Управление банами", callback_data="admin_bans")],
             [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
+            [InlineKeyboardButton("🖼️ Управление картинками", callback_data="admin_images")],
             [InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]
         ]
         
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    elif data == "admin_images":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        text = (
+            f"🖼️ *Управление картинками*\n\n"
+            f"Текущие картинки:\n"
+            f"• Приветствие: {'✅' if WELCOME_IMAGE_ID else '❌'}\n"
+            f"• Кейс: {'✅' if CASE_IMAGE_ID else '❌'}\n\n"
+            f"Выберите что хотите изменить:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🖼️ Загрузить приветствие", callback_data="upload_welcome")],
+            [InlineKeyboardButton("🖼️ Загрузить кейс", callback_data="upload_case")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]
+        ]
+        
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    elif data == "upload_welcome":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        context.user_data['awaiting'] = 'upload_welcome'
+        await query.edit_message_text(
+            "🖼️ *Загрузите картинку для приветствия*\n\n"
+            "Отправьте фото, которое будет показываться при /start",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    
+    elif data == "upload_case":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        context.user_data['awaiting'] = 'upload_case'
+        await query.edit_message_text(
+            "🖼️ *Загрузите картинку для кейса*\n\n"
+            "Отправьте фото, которое будет показываться в разделе кейса",
+            parse_mode=ParseMode.MARKDOWN
+        )
     
     elif data == "admin_users":
         if user_id not in ADMIN_IDS:
@@ -1421,12 +1590,27 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         user_id = int(parts[2])
         amount = int(parts[3])
         
-        db.confirm_stars_payment(payload)
+        user_id, amount = db.confirm_stars_payment(payload)
         
-        await update.message.reply_text(
-            f"✅ *Платеж успешно зачислен!*\n\n💰 Сумма: {amount} ★",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        if user_id:
+            await update.message.reply_text(
+                f"✅ *Платеж успешно зачислен!*\n\n💰 Сумма: {amount} ★",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            # Уведомление админу
+            user = db.get_user(user_id)
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(
+                        admin_id,
+                        f"💰 *Пополнение через Stars*\n\n"
+                        f"👤 Пользователь: @{user[1] or user_id}\n"
+                        f"💎 Сумма: {amount} ★",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                except:
+                    pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_ban(update, context):
@@ -1436,6 +1620,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     if 'awaiting' not in context.user_data:
+        # Проверяем не фото ли это для загрузки картинок
+        if update.message.photo and user_id in ADMIN_IDS:
+            # Проверяем есть ли ожидание загрузки
+            if 'upload_welcome' in context.user_data:
+                file_id = update.message.photo[-1].file_id
+                db.save_image('welcome_image', file_id)
+                context.user_data.pop('upload_welcome')
+                await update.message.reply_text("✅ Картинка для приветствия сохранена!")
+                return
+            elif 'upload_case' in context.user_data:
+                file_id = update.message.photo[-1].file_id
+                db.save_image('case_image', file_id)
+                context.user_data.pop('upload_case')
+                await update.message.reply_text("✅ Картинка для кейса сохранена!")
+                return
         return
     
     state = context.user_data['awaiting']
@@ -1487,6 +1686,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="withdraw_menu")]])
             )
             
+            # Уведомление админу
             for admin_id in ADMIN_IDS:
                 try:
                     await context.bot.send_message(
@@ -1530,6 +1730,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="withdraw_menu")]])
             )
             
+            # Уведомление админу
             for admin_id in ADMIN_IDS:
                 try:
                     await context.bot.send_message(
@@ -1594,16 +1795,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Ошибок: {failed}",
             parse_mode=ParseMode.MARKDOWN
         )
+    
+    elif state == 'upload_welcome' and user_id in ADMIN_IDS:
+        # Это обрабатывается выше в проверке фото
+        pass
+    elif state == 'upload_case' and user_id in ADMIN_IDS:
+        # Это обрабатывается выше в проверке фото
+        pass
 
 def main():
     print("=" * 60)
     print(f"🚀 ЗАПУСК БОТА {BOT_NAME}")
     print("=" * 60)
-    print("✅ Telegram Stars пополнение")
-    print("✅ CryptoBot пополнение")
+    print("✅ Telegram Stars пополнение (1★ = 1 Telegram Star)")
+    print(f"✅ CryptoBot пополнение (1★ = {RUB_PER_STAR} руб = {TON_PER_STAR:.4f} TON)")
     print("✅ Вывод на Telegram Username")
     print("✅ Вывод на CryptoBot ID")
     print("✅ Админ-панель с рассылкой")
+    print("✅ Управление картинками")
     print("✅ Зимний магазин NFT")
     print(f"✅ Твой ID {ADMIN_IDS[0]} - АДМИН")
     print("=" * 60)
@@ -1621,4 +1830,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
