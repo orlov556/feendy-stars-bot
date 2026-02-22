@@ -17,7 +17,7 @@ TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "YOUR_CRYPTOBOT_API_KEY")
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 
-ADMIN_IDS = [5697184715]  # ТВОЙ ID - ТЫ АДМИН, ТЕБЯ НЕ ЗАБАНИТ
+ADMIN_IDS = [5697184715]  # ТВОЙ ID - ТЫ АДМИН
 
 BOT_NAME = "FEENDY STARS"
 
@@ -88,7 +88,7 @@ class Database:
         self.conn = sqlite3.connect('feendy_stars.db', check_same_thread=False)
         self.cursor = self.conn.cursor()
         self._create_tables()
-        self._init_admin()
+        self._init_admin()  # Принудительно делаем админа при запуске
     
     def _create_tables(self):
         # Таблица пользователей
@@ -211,17 +211,26 @@ class Database:
         self.conn.commit()
     
     def _init_admin(self):
-        # Твой ID уже админ
+        """ПРИНУДИТЕЛЬНО делаем админа и разбаниваем при каждом запуске"""
         for admin_id in ADMIN_IDS:
-            self.cursor.execute(
-                'UPDATE users SET is_admin = 1, is_banned = 0 WHERE user_id = ?',
-                (admin_id,)
-            )
-            self.cursor.execute('''
-                INSERT OR IGNORE INTO users (user_id, username, first_name, is_admin, is_banned)
-                VALUES (?, 'admin', 'Admin', 1, 0)
-            ''', (admin_id,))
+            # Сначала проверяем есть ли пользователь
+            self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (admin_id,))
+            user = self.cursor.fetchone()
+            
+            if user:
+                # Если есть - обновляем
+                self.cursor.execute('''
+                    UPDATE users SET is_admin = 1, is_banned = 0 WHERE user_id = ?
+                ''', (admin_id,))
+            else:
+                # Если нет - создаем
+                self.cursor.execute('''
+                    INSERT INTO users (user_id, username, first_name, is_admin, is_banned)
+                    VALUES (?, 'admin', 'Admin', 1, 0)
+                ''', (admin_id,))
+        
         self.conn.commit()
+        logger.info(f"✅ Админ с ID {ADMIN_IDS[0]} принудительно установлен и разбанен")
     
     def _init_settings(self):
         settings = {
@@ -572,29 +581,30 @@ GAME_ODDS = {
 }
 
 async def check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка на бан - админы всегда пропускаются"""
+    """Проверка бана - только для обычных пользователей, админы всегда проходят"""
     user_id = update.effective_user.id
-    user = db.get_user(user_id)
     
-    # Админы не могут быть забанены
-    if user and user[8] == 1:  # is_admin
+    # Если это админ - всегда пропускаем
+    if user_id in ADMIN_IDS:
         return True
     
-    # Проверяем бан для обычных пользователей
+    # Для остальных проверяем бан
+    user = db.get_user(user_id)
     if user and user[9] == 1:  # is_banned
         if update.message:
             await update.message.reply_text("❌ Вы заблокированы в этом боте.")
+        elif update.callback_query:
+            await update.callback_query.edit_message_text("❌ Вы заблокированы в этом боте.")
         return False
     return True
 
 async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверка на админа"""
     user_id = update.effective_user.id
-    user = db.get_user(user_id)
-    return user and user[8] == 1
+    return user_id in ADMIN_IDS  # Просто проверяем по списку
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Проверяем бан (админы всегда пропускаются)
+    # Проверяем бан
     if not await check_ban(update, context):
         return
     
@@ -635,7 +645,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     # Админ-панель только для админов
-    if user_data and user_data[8] == 1:
+    if user_id in ADMIN_IDS:
         keyboard.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
     
     text = (
@@ -661,7 +671,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Проверяем бан (админы пропускаются)
-    if user[9] == 1 and user[8] != 1:
+    if user[9] == 1 and user_id not in ADMIN_IDS:
         await query.edit_message_text("❌ Вы заблокированы в этом боте.")
         return
     
@@ -670,7 +680,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================== АДМИН-ПАНЕЛЬ ==================
     
     if data == "admin_panel":
-        if not await check_admin(update, context):
+        if user_id not in ADMIN_IDS:
             await query.edit_message_text("❌ У вас нет прав администратора")
             return
         
@@ -698,8 +708,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
     
+    elif data == "admin_users":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        users = db.get_all_users()
+        text = f"👥 *Всего пользователей: {len(users)}*\n\n"
+        
+        for u in users[:20]:
+            status = "🔴" if u[5] == 1 else "🟢"
+            admin = "👑" if u[6] == 1 else ""
+            text += f"{status}{admin} {u[2]} (@{u[1]}) — {u[3]} ★\n"
+        
+        keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]]
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+    
     elif data == "admin_bans":
-        if not await check_admin(update, context):
+        if user_id not in ADMIN_IDS:
             return
         
         banned = db.get_banned_users()
@@ -718,12 +743,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("unban_"):
-        if not await check_admin(update, context):
+        if user_id not in ADMIN_IDS:
             return
         
         ban_user_id = int(data.replace("unban_", ""))
         
-        # Разбан через админ-функцию
         if db.unban_user(user_id, ban_user_id):
             await query.edit_message_text(f"✅ Пользователь {ban_user_id} разбанен")
         else:
@@ -1086,7 +1110,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         
-        if user and user[8] == 1:
+        if user_id in ADMIN_IDS:
             keyboard.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
         
         text = (
@@ -1163,9 +1187,9 @@ def main():
     print("=" * 60)
     print(f"🚀 ЗАПУСК БОТА {BOT_NAME}")
     print("=" * 60)
-    print("✅ Админ не банится автоматически")
+    print("✅ АВТО-БАН ПОЛНОСТЬЮ ОТКЛЮЧЕН")
     print("✅ Бан только через админ-панель")
-    print(f"✅ Твой ID {ADMIN_IDS[0]} - АДМИН")
+    print(f"✅ Твой ID {ADMIN_IDS[0]} - АДМИН (принудительно разбанен)")
     print("=" * 60)
     
     app = Application.builder().token(TELEGRAM_TOKEN).build()
