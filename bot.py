@@ -36,8 +36,9 @@ logger = logging.getLogger(__name__)
 # ======================== CRYPTOBOT API ========================
 
 class CryptoBotAPI:
-    def __init__(self, api_key):
+    def __init__(self, api_key, bot_username=None):
         self.api_key = api_key
+        self.bot_username = bot_username or "FEENDY_STARS_bot"  # Заглушка, потом обновится
         self.base_url = "https://pay.crypt.bot/api"
         self.headers = {
             "Crypto-Pay-API-Token": api_key,
@@ -53,7 +54,7 @@ class CryptoBotAPI:
                 "description": description,
                 "payload": payload,
                 "paid_btn_name": "openBot",
-                "paid_btn_url": f"https://t.me/{(await context.bot.get_me()).username}"
+                "paid_btn_url": f"https://t.me/{self.bot_username}"
             }
             
             response = requests.post(
@@ -88,8 +89,10 @@ class CryptoBotAPI:
             logger.error(f"CryptoBot status error: {e}")
             return None
 
-# Инициализация CryptoBot
-crypto_bot = CryptoBotAPI(CRYPTOBOT_API_KEY) if CRYPTOBOT_API_KEY else None
+# Инициализация CryptoBot (пока без username, обновится при старте)
+crypto_bot = None
+if CRYPTOBOT_API_KEY:
+    crypto_bot = CryptoBotAPI(CRYPTOBOT_API_KEY, "FEENDY_STARS_bot")
 
 # ======================== БАЗА ДАННЫХ ========================
 
@@ -532,6 +535,14 @@ async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = db.get_user(user_id)
     return user and user[9] == 1
 
+async def update_bot_username(application):
+    """Обновляет username бота в CryptoBot при старте"""
+    global crypto_bot
+    if crypto_bot:
+        me = await application.bot.get_me()
+        crypto_bot.bot_username = me.username
+        logger.info(f"✅ Бот: @{me.username}, CryptoBot обновлён")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_ban(update, context):
         return
@@ -731,7 +742,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == "referral":
-        ref_link = f"https://t.me/{(await context.bot.get_me()).username}?start=ref{user_id}"
+        me = await context.bot.get_me()
+        ref_link = f"https://t.me/{me.username}?start=ref{user_id}"
         
         text = (
             f"👥 *Реферальная программа*\n\n"
@@ -1605,17 +1617,23 @@ def main():
     print("✅ Кейсы с предметами")
     print("✅ Вывод средств")
     print("✅ Пополнение через Stars и CryptoBot")
-    print("✅ Курс: 1 ★ = 1.3 руб")
     print(f"✅ Администраторы: {len(ADMIN_IDS)}")
     print("=" * 60)
     
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Добавляем хендлеры
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
+    
+    # Обновляем username бота при старте
+    async def post_init(application):
+        await update_bot_username(application)
+    
+    app.post_init = post_init
     
     print("🤖 Бот запущен и готов к работе!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
