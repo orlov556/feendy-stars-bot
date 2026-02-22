@@ -13,8 +13,8 @@ import requests
 import time
 
 # ======================== НАСТРОЙКА ========================
-TELEGRAM_TOKEN = os.environ.get("8367060256:AAGcXv-zM6ATjAx9SyxYqTVEucIoWDa8H2Y", "YOUR_BOT_TOKEN_HERE")
-CRYPTOBOT_API_KEY = os.environ.get("536636:AAadu0lTf0nltR1CKfWkOwKJX8CLLcXYCXY", "YOUR_CRYPTOBOT_API_KEY")
+TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "YOUR_CRYPTOBOT_API_KEY")
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 
 ADMIN_IDS = [5697184715]  # ТВОЙ ID
@@ -1528,3 +1528,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
