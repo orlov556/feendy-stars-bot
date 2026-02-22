@@ -61,8 +61,8 @@ class CryptoBotAPI:
                 "asset": currency,
                 "amount": str(ton_amount),
                 "description": f"{description} на {stars_amount} ★ (≈ {rub_amount:.2f} руб)",
-                "paid_btn_name": "return",
-                "paid_btn_url": "https://t.me/YOUR_BOT_USERNAME",
+                "paid_btn_name": "callback",
+                "paid_btn_url": "https://t.me/FeendyStars_robot",  # ИСПРАВЛЕНО # или "openBot", "viewItem", "openChannel"
                 "payload": f"crypto_{stars_amount}_{int(time.time())}"
             }
             
@@ -1830,3 +1830,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
