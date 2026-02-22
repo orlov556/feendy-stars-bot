@@ -5,8 +5,8 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, PreCheckoutQueryHandler
 from telegram.constants import ParseMode
 import os
 import requests
@@ -1621,3 +1621,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
