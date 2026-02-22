@@ -609,6 +609,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     user = update.effective_user
+    user_id = user.id
     referred_by = None
     
     if context.args and context.args[0].startswith('ref'):
@@ -1203,3 +1204,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
