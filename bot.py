@@ -22,7 +22,7 @@ ADMIN_IDS = [5697184715]  # ТВОЙ ID
 BOT_NAME = "FEENDY STARS"
 
 # Глобальные переменные для хранения ID картинок
-WELCOME_IMAGE_ID = None
+WELCOME_IMAGE_ID = "AgACAgIAAxkBAAPxZ7sK8R7_8Q5Jk5m7N8Q9R2s3LmYAAgxtj2UcvZSF8r9LmN8Q9R2s3LmYAAQADAgADeQADNgQ"
 CASE_IMAGE_ID = None
 
 # Курсы валют
@@ -1830,4 +1830,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
