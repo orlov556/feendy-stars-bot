@@ -11,10 +11,11 @@ from telegram.constants import ParseMode
 import os
 import requests
 import time
+import string
 
 # ======================== НАСТРОЙКА ========================
 TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "YOUR_CRYPTOBOT_API_KEY")
+CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "Y_CRYPTOBOT_API_KEY")
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 
 ADMIN_IDS = [5697184715]  # ТВОЙ ID
@@ -111,6 +112,7 @@ class Database:
         self._create_tables()
         self._init_admin()
         self._load_images()
+        self._init_promocodes()
     
     def _create_tables(self):
         # Таблица пользователей
@@ -130,7 +132,8 @@ class Database:
                 is_banned INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 total_withdrawn INTEGER DEFAULT 0,
-                total_lost INTEGER DEFAULT 0
+                total_lost INTEGER DEFAULT 0,
+                last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -170,7 +173,7 @@ class Database:
             )
         ''')
         
-        # Таблица заявок на вывод
+        # Таблица заявок на вывод звёзд
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS withdrawals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,13 +182,53 @@ class Database:
                 method TEXT,
                 wallet TEXT,
                 status TEXT DEFAULT 'pending',
+                reject_reason TEXT,
                 admin_id INTEGER,
                 processed_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Таблица настроек (здесь будут храниться ID картинок)
+        # Таблица заявок на вывод NFT
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS nft_withdrawals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                nft_name TEXT,
+                snowflakes_cost INTEGER,
+                status TEXT DEFAULT 'pending',
+                reject_reason TEXT,
+                admin_id INTEGER,
+                processed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица промокодов
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS promocodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE,
+                amount INTEGER,
+                expires_at DATE,
+                max_uses INTEGER,
+                used_count INTEGER DEFAULT 0,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица активаций промокодов
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS promocode_uses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                code TEXT,
+                used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица настроек
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -271,6 +314,17 @@ class Database:
             )
         self.conn.commit()
     
+    def _init_promocodes(self):
+        """Добавляем тестовый промокод если нет"""
+        self.cursor.execute('SELECT COUNT(*) FROM promocodes')
+        if self.cursor.fetchone()[0] == 0:
+            expiry = (datetime.now() + timedelta(days=30)).date()
+            self.cursor.execute('''
+                INSERT INTO promocodes (code, amount, expires_at, max_uses, created_by)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ('FEENDY100', 100, expiry, 100, ADMIN_IDS[0]))
+            self.conn.commit()
+    
     def _load_images(self):
         """Загрузка ID картинок из базы данных"""
         global WELCOME_IMAGE_ID, CASE_IMAGE_ID
@@ -303,6 +357,8 @@ class Database:
             CASE_IMAGE_ID = file_id
             logger.info(f"✅ Сохранена картинка кейса")
     
+    # ================== РАБОТА С ПОЛЬЗОВАТЕЛЯМИ ==================
+    
     def get_user(self, user_id):
         self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
         return self.cursor.fetchone()
@@ -325,38 +381,74 @@ class Database:
     
     def update_balance(self, user_id, amount):
         self.cursor.execute('''
-            UPDATE users SET balance = balance + ? WHERE user_id = ?
+            UPDATE users SET balance = balance + ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?
         ''', (amount, user_id))
         self.conn.commit()
     
     def update_snowflakes(self, user_id, amount):
         self.cursor.execute('''
-            UPDATE users SET snowflakes = snowflakes + ? WHERE user_id = ?
+            UPDATE users SET snowflakes = snowflakes + ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?
         ''', (amount, user_id))
         self.conn.commit()
     
     def add_lost_stars(self, user_id, amount):
         self.cursor.execute('''
             UPDATE users SET total_lost = total_lost + ?, 
-            snowflakes = snowflakes + ? WHERE user_id = ?
+            snowflakes = snowflakes + ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?
         ''', (amount, int(amount * 0.5), user_id))
         self.conn.commit()
     
     def update_crypto_id(self, user_id, crypto_id):
         self.cursor.execute('''
-            UPDATE users SET crypto_id = ? WHERE user_id = ?
+            UPDATE users SET crypto_id = ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?
         ''', (crypto_id, user_id))
         self.conn.commit()
     
     def update_telegram_username(self, user_id, telegram_username):
         self.cursor.execute('''
-            UPDATE users SET telegram_username = ? WHERE user_id = ?
+            UPDATE users SET telegram_username = ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?
         ''', (telegram_username, user_id))
         self.conn.commit()
     
-    def get_all_users(self):
-        self.cursor.execute('SELECT user_id, username, first_name, balance, snowflakes, is_banned, is_admin, created_at FROM users ORDER BY created_at DESC')
+    def get_all_users(self, sort_by='date', order='desc', limit=20, offset=0):
+        """Получение пользователей с сортировкой и пагинацией"""
+        sort_fields = {
+            'balance': 'balance',
+            'date': 'created_at',
+            'activity': 'last_active',
+            'snowflakes': 'snowflakes',
+            'referrals': 'referrals'
+        }
+        
+        sort_field = sort_fields.get(sort_by, 'created_at')
+        order_dir = 'DESC' if order == 'desc' else 'ASC'
+        
+        self.cursor.execute(f'''
+            SELECT user_id, username, first_name, balance, snowflakes, is_banned, is_admin, created_at, last_active 
+            FROM users 
+            ORDER BY {sort_field} {order_dir}
+            LIMIT ? OFFSET ?
+        ''', (limit, offset))
+        
         return self.cursor.fetchall()
+    
+    def get_total_users_count(self):
+        self.cursor.execute('SELECT COUNT(*) FROM users')
+        return self.cursor.fetchone()[0]
+    
+    def search_users(self, query):
+        """Поиск пользователей по ID или Username"""
+        self.cursor.execute('''
+            SELECT user_id, username, first_name, balance, snowflakes, is_banned, is_admin 
+            FROM users 
+            WHERE user_id LIKE ? OR username LIKE ? OR first_name LIKE ?
+            LIMIT 20
+        ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
+        return self.cursor.fetchall()
+    
+    def get_user_by_id(self, user_id):
+        self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        return self.cursor.fetchone()
     
     def add_game(self, user_id, game_type, bet, multiplier, win, result):
         self.cursor.execute('''
@@ -414,10 +506,9 @@ class Database:
         result = self.cursor.fetchone()
         
         if not result or not result[0] or datetime.strptime(result[0], '%Y-%m-%d').date() < today:
-            self.cursor.execute(
-                'UPDATE users SET daily_bonus = ?, balance = balance + 5 WHERE user_id = ?',
-                (today, user_id)
-            )
+            self.cursor.execute('''
+                UPDATE users SET daily_bonus = ?, balance = balance + 5, last_active = CURRENT_TIMESTAMP WHERE user_id = ?
+            ''', (today, user_id))
             self.conn.commit()
             return True
         return False
@@ -434,18 +525,71 @@ class Database:
     ]
     
     def buy_winter_nft(self, user_id, item_name):
+        """Покупка зимнего NFT за снежинки (без добавления в инвентарь)"""
         for item in self.WINTER_NFTS:
             if item['name'] == item_name:
                 user = self.get_user(user_id)
-                if user[4] >= item['price']:
+                if user[4] >= item['price']:  # Проверяем снежинки
                     self.update_snowflakes(user_id, -item['price'])
-                    self.cursor.execute('''
-                        INSERT INTO inventory (user_id, item_name, item_price, source)
-                        VALUES (?, ?, ?, 'winter_shop')
-                    ''', (user_id, item['name'], item['price']))
-                    self.conn.commit()
                     return True
         return False
+    
+    # ================== ЗАЯВКИ НА ВЫВОД NFT ==================
+    
+    def create_nft_withdrawal(self, user_id, nft_name, snowflakes_cost):
+        """Создание заявки на вывод NFT"""
+        self.cursor.execute('''
+            INSERT INTO nft_withdrawals (user_id, nft_name, snowflakes_cost)
+            VALUES (?, ?, ?)
+        ''', (user_id, nft_name, snowflakes_cost))
+        self.conn.commit()
+        return self.cursor.lastrowid
+    
+    def get_nft_withdrawal(self, withdrawal_id):
+        """Получение информации о заявке на NFT"""
+        self.cursor.execute('SELECT * FROM nft_withdrawals WHERE id = ?', (withdrawal_id,))
+        return self.cursor.fetchone()
+    
+    def get_pending_nft_withdrawals(self):
+        """Получение всех ожидающих заявок на NFT"""
+        self.cursor.execute('''
+            SELECT w.*, u.username, u.first_name
+            FROM nft_withdrawals w
+            JOIN users u ON w.user_id = u.user_id
+            WHERE w.status = 'pending'
+            ORDER BY w.created_at ASC
+        ''')
+        return self.cursor.fetchall()
+    
+    def approve_nft_withdrawal(self, withdrawal_id, admin_id):
+        """Одобрение заявки на вывод NFT"""
+        self.cursor.execute('''
+            UPDATE nft_withdrawals 
+            SET status = 'approved', admin_id = ?, processed_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'pending'
+        ''', (admin_id, withdrawal_id))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+    
+    def reject_nft_withdrawal(self, withdrawal_id, admin_id, reason):
+        """Отклонение заявки на вывод NFT с возвратом снежинок"""
+        # Получаем информацию о заявке
+        self.cursor.execute('SELECT user_id, snowflakes_cost FROM nft_withdrawals WHERE id = ?', (withdrawal_id,))
+        withdrawal = self.cursor.fetchone()
+        
+        if withdrawal:
+            user_id, cost = withdrawal
+            # Возвращаем снежинки
+            self.update_snowflakes(user_id, cost)
+        
+        # Обновляем статус заявки
+        self.cursor.execute('''
+            UPDATE nft_withdrawals 
+            SET status = 'rejected', admin_id = ?, reject_reason = ?, processed_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'pending'
+        ''', (admin_id, reason, withdrawal_id))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
     
     # ================== ПЛАТЕЖИ ==================
     
@@ -491,7 +635,7 @@ class Database:
             return user_id, amount
         return None, None
     
-    # ================== ВЫВОД ==================
+    # ================== ВЫВОД ЗВЁЗД ==================
     
     def create_withdrawal(self, user_id, amount, method, wallet):
         self.cursor.execute('''
@@ -559,14 +703,15 @@ class Database:
             self.conn.commit()
             return True
     
-    def reject_withdrawal(self, withdrawal_id, admin_id):
+    def reject_withdrawal(self, withdrawal_id, admin_id, reason):
+        """Отклонение заявки на вывод с причиной"""
         self.cursor.execute('''
             UPDATE withdrawals 
-            SET status = 'rejected', admin_id = ?, processed_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        ''', (admin_id, withdrawal_id))
+            SET status = 'rejected', admin_id = ?, reject_reason = ?, processed_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'pending'
+        ''', (admin_id, reason, withdrawal_id))
         self.conn.commit()
-        return True
+        return self.cursor.rowcount > 0
     
     def get_user_withdrawals(self, user_id):
         self.cursor.execute('''
@@ -575,6 +720,65 @@ class Database:
             ORDER BY created_at DESC
         ''', (user_id,))
         return self.cursor.fetchall()
+    
+    # ================== ПРОМОКОДЫ ==================
+    
+    def generate_promocode(self, amount, days_valid, max_uses, created_by):
+        """Генерация нового промокода"""
+        # Генерируем случайный код
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        expires_at = (datetime.now() + timedelta(days=days_valid)).date()
+        
+        self.cursor.execute('''
+            INSERT INTO promocodes (code, amount, expires_at, max_uses, created_by)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (code, amount, expires_at, max_uses, created_by))
+        self.conn.commit()
+        return code
+    
+    def get_promocode_info(self, code):
+        """Получение информации о промокоде"""
+        self.cursor.execute('SELECT * FROM promocodes WHERE code = ?', (code,))
+        return self.cursor.fetchone()
+    
+    def activate_promocode(self, user_id, code):
+        """Активация промокода пользователем"""
+        # Проверяем существование кода
+        promo = self.get_promocode_info(code)
+        if not promo:
+            return {'success': False, 'reason': 'Код не найден'}
+        
+        # Проверяем срок действия
+        if promo[3] and datetime.now().date() > datetime.strptime(promo[3], '%Y-%m-%d').date():
+            return {'success': False, 'reason': 'Промокод истёк'}
+        
+        # Проверяем лимит использований
+        if promo[4] > 0 and promo[5] >= promo[4]:
+            return {'success': False, 'reason': 'Промокод использован максимальное количество раз'}
+        
+        # Проверяем, не активировал ли уже пользователь этот код
+        self.cursor.execute('SELECT * FROM promocode_uses WHERE user_id = ? AND code = ?', (user_id, code))
+        if self.cursor.fetchone():
+            return {'success': False, 'reason': 'Вы уже активировали этот промокод'}
+        
+        # Начисляем бонус
+        self.update_balance(user_id, promo[2])
+        
+        # Записываем использование
+        self.cursor.execute('INSERT INTO promocode_uses (user_id, code) VALUES (?, ?)', (user_id, code))
+        
+        # Обновляем счётчик использований
+        self.cursor.execute('UPDATE promocodes SET used_count = used_count + 1 WHERE code = ?', (code,))
+        self.conn.commit()
+        
+        return {'success': True, 'amount': promo[2]}
+    
+    def get_all_promocodes(self):
+        """Получение всех промокодов"""
+        self.cursor.execute('SELECT * FROM promocodes ORDER BY created_at DESC')
+        return self.cursor.fetchall()
+    
+    # ================== НАСТРОЙКИ ==================
     
     def get_setting(self, key, default=None):
         self.cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
@@ -745,6 +949,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu")
         ],
         [
+            InlineKeyboardButton("🎟️ Активировать промокод", callback_data="activate_promo"),
             InlineKeyboardButton("📊 Правила", callback_data="rules")
         ]
     ]
@@ -1077,12 +1282,66 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if item['name'] == item_name:
                 if user[4] >= item['price']:
                     if db.buy_winter_nft(user_id, item_name):
-                        await edit_message(query, f"✅ Куплено: {item_name}")
+                        # Создаем заявку на вывод NFT
+                        withdraw_id = db.create_nft_withdrawal(user_id, item_name, item['price'])
+                        
+                        text = (
+                            f"✅ *Покупка совершена!*\n\n"
+                            f"🎁 {item_name}\n"
+                            f"❄️ Цена: {item['price']} ✨\n\n"
+                            f"📤 *Вывести NFT*\n"
+                            f"Нажмите кнопку ниже, чтобы отправить заявку на вывод."
+                        )
+                        
+                        keyboard = [
+                            [InlineKeyboardButton(f"📤 Вывести {item_name}", callback_data=f"withdraw_nft_{withdraw_id}")],
+                            [InlineKeyboardButton("◀️ В магазин", callback_data="winter_shop")]
+                        ]
+                        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
+                        return
                     else:
                         await edit_message(query, "❌ Ошибка")
                 else:
                     await edit_message(query, f"❌ Не хватает {item['price'] - user[4]} ✨")
                 break
+    
+    elif data.startswith("withdraw_nft_"):
+        withdraw_id = int(data.replace("withdraw_nft_", ""))
+        withdrawal = db.get_nft_withdrawal(withdraw_id)
+        
+        if not withdrawal or withdrawal[3] != 'pending':
+            await edit_message(query, "❌ Заявка уже обработана")
+            return
+        
+        # Уведомление админу
+        for admin_id in ADMIN_IDS:
+            try:
+                keyboard_admin = [
+                    [InlineKeyboardButton(f"✅ Вывести #{withdraw_id}", callback_data=f"approve_nft_{withdraw_id}"),
+                     InlineKeyboardButton(f"❌ Отказать #{withdraw_id}", callback_data=f"reject_nft_{withdraw_id}")]
+                ]
+                
+                await context.bot.send_message(
+                    admin_id,
+                    f"🖼️ *Новая заявка на вывод NFT*\n\n"
+                    f"👤 Пользователь: @{user[1] or user_id}\n"
+                    f"🎁 NFT: {withdrawal[2]}\n"
+                    f"❄️ Куплен за: {withdrawal[3]} ✨\n"
+                    f"🆔 Заявка: #{withdraw_id}",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup(keyboard_admin)
+                )
+            except:
+                pass
+        
+        await edit_message(
+            query,
+            f"✅ *Заявка на вывод отправлена!*\n\n"
+            f"🎁 {withdrawal[2]}\n"
+            f"🆔 Номер заявки: #{withdraw_id}\n\n"
+            f"⏳ Ожидайте подтверждения администратора.\n"
+            f"После одобрения NFT придёт в течение 10-15 минут."
+        )
     
     # ================== КЕЙС ==================
     
@@ -1153,6 +1412,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await edit_message(query, "❌ Бонус уже получен")
     
+    # ================== ПРОМОКОДЫ ==================
+    
+    elif data == "activate_promo":
+        context.user_data['awaiting'] = 'promocode'
+        await edit_message(
+            query,
+            "🎟️ *Активация промокода*\n\nВведите код:"
+        )
+    
     # ================== АДМИН-ПАНЕЛЬ ==================
     
     elif data == "admin_panel":
@@ -1161,21 +1429,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         stats = db.get_total_stats()
-        pending = len(db.get_pending_withdrawals())
+        pending_stars = len(db.get_pending_withdrawals())
+        pending_nft = len(db.get_pending_nft_withdrawals())
         
         text = (
             f"⚙️ *Админ-панель*\n\n"
+            f"📊 *Статистика:*\n"
             f"👥 Пользователей: {stats['total_users']}\n"
             f"💰 Общий баланс: {stats['total_balance']} ★\n"
             f"❄️ Снежинок: {stats['total_snowflakes']} ✨\n"
             f"💸 Выведено: {stats['total_withdrawn']} ★\n"
-            f"🎮 Игр: {stats['total_games']}\n"
-            f"⏳ Заявок: {pending}"
+            f"🎮 Игр: {stats['total_games']}\n\n"
+            f"⏳ *Заявок:*\n"
+            f"💎 На вывод звёзд: {pending_stars}\n"
+            f"🖼️ На вывод NFT: {pending_nft}"
         )
         
         keyboard = [
-            [InlineKeyboardButton("👥 Пользователи", callback_data="admin_users")],
-            [InlineKeyboardButton("⏳ Заявки", callback_data="admin_withdrawals")],
+            [InlineKeyboardButton("👥 Пользователи", callback_data="admin_users_page_1_balance_desc")],
+            [InlineKeyboardButton("⏳ Заявки на вывод звёзд", callback_data="admin_withdrawals")],
+            [InlineKeyboardButton("🖼️ Заявки на вывод NFT", callback_data="admin_nft_withdrawals")],
+            [InlineKeyboardButton("🎟️ Промокоды", callback_data="admin_promocodes")],
             [InlineKeyboardButton("🔨 Баны", callback_data="admin_bans")],
             [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
             [InlineKeyboardButton("🖼️ Картинки", callback_data="admin_images")],
@@ -1183,6 +1457,259 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         await edit_message(query, text, InlineKeyboardMarkup(keyboard))
+    
+    # ================== УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (ПАГИНАЦИЯ, ПОИСК, СОРТИРОВКА) ==================
+    
+    elif data.startswith("admin_users_page_"):
+        if user_id not in ADMIN_IDS:
+            return
+        
+        # Формат: admin_users_page_1_balance_desc
+        parts = data.replace("admin_users_page_", "").split('_')
+        page = int(parts[0])
+        sort_by = parts[1] if len(parts) > 1 else 'date'
+        order = parts[2] if len(parts) > 2 else 'desc'
+        
+        users_per_page = 20
+        total_users = db.get_total_users_count()
+        total_pages = (total_users + users_per_page - 1) // users_per_page
+        
+        if page < 1:
+            page = 1
+        if page > total_pages:
+            page = total_pages
+        
+        offset = (page - 1) * users_per_page
+        users = db.get_all_users(sort_by=sort_by, order=order, limit=users_per_page, offset=offset)
+        
+        text = f"👥 *Страница {page} из {total_pages}*\n\n"
+        
+        for u in users:
+            status = "🔴" if u[5] == 1 else "🟢"
+            admin = "👑" if u[6] == 1 else ""
+            last_active = u[8][:10] if u[8] else "никогда"
+            text += f"{status}{admin} {u[2]} (@{u[1]}) — {u[3]} ★ | ✨ {u[4]} | {last_active}\n"
+        
+        keyboard = []
+        
+        # Кнопки сортировки
+        sort_row = [
+            InlineKeyboardButton("📅", callback_data=f"admin_users_page_1_date_desc"),
+            InlineKeyboardButton("💰", callback_data=f"admin_users_page_1_balance_desc"),
+            InlineKeyboardButton("✨", callback_data=f"admin_users_page_1_snowflakes_desc"),
+            InlineKeyboardButton("👥", callback_data=f"admin_users_page_1_referrals_desc")
+        ]
+        keyboard.append(sort_row)
+        
+        # Кнопки навигации
+        nav_row = []
+        if page > 1:
+            nav_row.append(InlineKeyboardButton("◀️", callback_data=f"admin_users_page_{page-1}_{sort_by}_{order}"))
+        nav_row.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
+        if page < total_pages:
+            nav_row.append(InlineKeyboardButton("▶️", callback_data=f"admin_users_page_{page+1}_{sort_by}_{order}"))
+        keyboard.append(nav_row)
+        
+        # Кнопка поиска
+        keyboard.append([InlineKeyboardButton("🔍 Поиск пользователя", callback_data="admin_search_user")])
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
+        
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
+    
+    elif data == "admin_search_user":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        context.user_data['awaiting'] = 'search_user'
+        await edit_message(
+            query,
+            "🔍 *Поиск пользователя*\n\nВведите ID или Username:"
+        )
+    
+    # ================== ЗАЯВКИ НА ВЫВОД ЗВЁЗД С ПРИЧИНОЙ ==================
+    
+    elif data == "admin_withdrawals":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawals = db.get_pending_withdrawals()
+        
+        if not withdrawals:
+            await edit_message(
+                query,
+                "✅ Нет ожидающих заявок на вывод звёзд",
+                InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]])
+            )
+            return
+        
+        text = "⏳ *Заявки на вывод звёзд:*\n\n"
+        keyboard = []
+        
+        for w in withdrawals[:5]:
+            method_emoji = "📱" if w[3] == 'telegram' else "💳"
+            text += (
+                f"🆔 #{w[0]}\n"
+                f"👤 @{w[7]}\n"
+                f"{method_emoji} {w[4]}\n"
+                f"💰 {w[2]} ★\n"
+                f"🕐 {w[6][:16]}\n\n"
+            )
+            keyboard.append([
+                InlineKeyboardButton(f"✅ #{w[0]}", callback_data=f"approve_withdrawal_{w[0]}"),
+                InlineKeyboardButton(f"❌ #{w[0]}", callback_data=f"reject_withdrawal_{w[0]}")
+            ])
+        
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
+    
+    elif data.startswith("reject_withdrawal_"):
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawal_id = int(data.replace("reject_withdrawal_", ""))
+        context.user_data['reject_withdrawal_id'] = withdrawal_id
+        context.user_data['awaiting'] = 'reject_withdrawal_reason'
+        
+        await edit_message(
+            query,
+            f"❌ *Отклонение заявки #{withdrawal_id}*\n\nНапишите причину отказа:"
+        )
+    
+    elif data.startswith("approve_withdrawal_"):
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawal_id = int(data.replace("approve_withdrawal_", ""))
+        
+        if db.approve_withdrawal(withdrawal_id, user_id):
+            await edit_message(query, f"✅ Заявка #{withdrawal_id} одобрена")
+            
+            # Уведомляем пользователя
+            db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (withdrawal_id,))
+            w_user_id, amount = db.cursor.fetchone()
+            try:
+                await context.bot.send_message(
+                    w_user_id,
+                    f"✅ *Заявка на вывод одобрена!*\n\n"
+                    f"💰 Сумма: {amount} ★\n"
+                    f"⏳ В течение 10-15 минут средства поступят.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except:
+                pass
+        else:
+            await edit_message(query, f"❌ Ошибка")
+    
+    # ================== ЗАЯВКИ НА ВЫВОД NFT ==================
+    
+    elif data == "admin_nft_withdrawals":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawals = db.get_pending_nft_withdrawals()
+        
+        if not withdrawals:
+            await edit_message(
+                query,
+                "✅ Нет ожидающих заявок на вывод NFT",
+                InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]])
+            )
+            return
+        
+        text = "🖼️ *Заявки на вывод NFT:*\n\n"
+        keyboard = []
+        
+        for w in withdrawals[:5]:
+            text += (
+                f"🆔 #{w[0]}\n"
+                f"👤 @{w[7]}\n"
+                f"🎁 {w[2]}\n"
+                f"❄️ {w[3]} ✨\n"
+                f"🕐 {w[6][:16]}\n\n"
+            )
+            keyboard.append([
+                InlineKeyboardButton(f"✅ #{w[0]}", callback_data=f"approve_nft_{w[0]}"),
+                InlineKeyboardButton(f"❌ #{w[0]}", callback_data=f"reject_nft_{w[0]}")
+            ])
+        
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
+    
+    elif data.startswith("approve_nft_"):
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawal_id = int(data.replace("approve_nft_", ""))
+        
+        if db.approve_nft_withdrawal(withdrawal_id, user_id):
+            await edit_message(query, f"✅ Заявка #{withdrawal_id} одобрена")
+            
+            # Уведомляем пользователя
+            withdrawal = db.get_nft_withdrawal(withdrawal_id)
+            try:
+                await context.bot.send_message(
+                    withdrawal[1],
+                    f"✅ *Заявка на вывод NFT одобрена!*\n\n"
+                    f"🎁 {withdrawal[2]}\n"
+                    f"🆔 Номер заявки: #{withdrawal_id}\n\n"
+                    f"⏳ В течение 10-15 минут NFT придёт вам в Telegram.\n"
+                    f"Проверьте личные сообщения!",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except:
+                pass
+        else:
+            await edit_message(query, f"❌ Ошибка")
+    
+    elif data.startswith("reject_nft_"):
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawal_id = int(data.replace("reject_nft_", ""))
+        context.user_data['reject_nft_id'] = withdrawal_id
+        context.user_data['awaiting'] = 'reject_nft_reason'
+        
+        await edit_message(
+            query,
+            f"❌ *Отклонение заявки #{withdrawal_id}*\n\nНапишите причину отказа:"
+        )
+    
+    # ================== ПРОМОКОДЫ В АДМИНКЕ ==================
+    
+    elif data == "admin_promocodes":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        promocodes = db.get_all_promocodes()
+        
+        text = "🎟️ *Промокоды*\n\n"
+        
+        if promocodes:
+            for p in promocodes[:10]:
+                expiry = p[3] or "никогда"
+                text += f"• `{p[1]}` — {p[2]} ★ | использован {p[5]}/{p[4]} | до {expiry}\n"
+        else:
+            text += "Нет созданных промокодов\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("➕ Создать промокод", callback_data="admin_create_promo")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]
+        ]
+        
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
+    
+    elif data == "admin_create_promo":
+        if user_id not in ADMIN_IDS:
+            return
+        
+        context.user_data['promo_step'] = 'amount'
+        context.user_data['awaiting'] = 'promo_amount'
+        await edit_message(
+            query,
+            "🎟️ *Создание промокода*\n\nВведите сумму в ★:"
+        )
+    
+    # ================== КАРТИНКИ ==================
     
     elif data == "admin_images":
         if user_id not in ADMIN_IDS:
@@ -1223,20 +1750,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🖼️ *Загрузите картинку для кейса*\n\nОтправьте фото:"
         )
     
-    elif data == "admin_users":
-        if user_id not in ADMIN_IDS:
-            return
-        
-        users = db.get_all_users()
-        text = f"👥 *Всего: {len(users)}*\n\n"
-        
-        for u in users[:20]:
-            status = "🔴" if u[5] == 1 else "🟢"
-            admin = "👑" if u[6] == 1 else ""
-            text += f"{status}{admin} {u[2]} (@{u[1]}) — {u[3]} ★ | ✨ {u[4]}\n"
-        
-        keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]]
-        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
+    # ================== БАНЫ ==================
     
     elif data == "admin_bans":
         if user_id not in ADMIN_IDS:
@@ -1245,13 +1759,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         banned = db.get_banned_users()
         
         if not banned:
-            await edit_message(query, "✅ Нет забаненных")
+            await edit_message(
+                query,
+                "✅ Нет забаненных",
+                InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]])
+            )
             return
         
         text = "🔨 *Забанены:*\n\n"
         keyboard = []
         
-        for b in banned:
+        for b in banned[:10]:
             text += f"• {b[2]} (@{b[1]}) — ID: {b[0]}\n"
             keyboard.append([InlineKeyboardButton(f"✅ Разбанить {b[0]}", callback_data=f"unban_{b[0]}")])
         
@@ -1269,57 +1787,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await edit_message(query, "❌ Ошибка")
     
-    elif data == "admin_withdrawals":
-        if user_id not in ADMIN_IDS:
-            return
-        
-        withdrawals = db.get_pending_withdrawals()
-        
-        if not withdrawals:
-            await edit_message(query, "✅ Нет заявок")
-            return
-        
-        text = "⏳ *Заявки:*\n\n"
-        keyboard = []
-        
-        for w in withdrawals[:5]:
-            method_emoji = "📱" if w[3] == 'telegram' else "💳"
-            text += (
-                f"🆔 #{w[0]}\n"
-                f"👤 @{w[7]}\n"
-                f"{method_emoji} {w[4]}\n"
-                f"💰 {w[2]} ★\n"
-                f"🕐 {w[6][:16]}\n\n"
-            )
-            keyboard.append([
-                InlineKeyboardButton(f"✅ {w[0]}", callback_data=f"approve_{w[0]}"),
-                InlineKeyboardButton(f"❌ {w[0]}", callback_data=f"reject_{w[0]}")
-            ])
-        
-        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
-        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
-    
-    elif data.startswith("approve_"):
-        if user_id not in ADMIN_IDS:
-            return
-        
-        withdrawal_id = int(data.replace("approve_", ""))
-        
-        if db.approve_withdrawal(withdrawal_id, user_id):
-            await edit_message(query, "✅ Заявка одобрена")
-        else:
-            await edit_message(query, "❌ Ошибка")
-    
-    elif data.startswith("reject_"):
-        if user_id not in ADMIN_IDS:
-            return
-        
-        withdrawal_id = int(data.replace("reject_", ""))
-        
-        if db.reject_withdrawal(withdrawal_id, user_id):
-            await edit_message(query, "❌ Заявка отклонена")
-        else:
-            await edit_message(query, "❌ Ошибка")
+    # ================== РАССЫЛКА ==================
     
     elif data == "admin_broadcast":
         if user_id not in ADMIN_IDS:
@@ -1405,6 +1873,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu")
             ],
             [
+                InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo"),
                 InlineKeyboardButton("📊 Правила", callback_data="rules")
             ]
         ]
@@ -1494,6 +1963,172 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     state = context.user_data['awaiting']
     
+    # ===== ОБРАБОТКА ПОИСКА ПОЛЬЗОВАТЕЛЯ =====
+    
+    if state == 'search_user':
+        if user_id not in ADMIN_IDS:
+            return
+        
+        results = db.search_users(text)
+        
+        if not results:
+            await update.message.reply_text("❌ Пользователи не найдены")
+        else:
+            response = "🔍 *Результаты поиска:*\n\n"
+            for r in results[:10]:
+                status = "🔴" if r[5] == 1 else "🟢"
+                admin = "👑" if r[6] == 1 else ""
+                response += f"{status}{admin} {r[2]} (@{r[1]}) — ID: `{r[0]}` | {r[3]} ★\n"
+            
+            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+        
+        context.user_data.pop('awaiting')
+        return
+    
+    # ===== ОБРАБОТКА ОТКАЗА С ПРИЧИНОЙ =====
+    
+    if state == 'reject_withdrawal_reason':
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawal_id = context.user_data.get('reject_withdrawal_id')
+        reason = text
+        
+        if db.reject_withdrawal(withdrawal_id, user_id, reason):
+            await update.message.reply_text(f"✅ Заявка #{withdrawal_id} отклонена")
+            
+            # Уведомляем пользователя
+            db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (withdrawal_id,))
+            w_user_id, amount = db.cursor.fetchone()
+            try:
+                await context.bot.send_message(
+                    w_user_id,
+                    f"❌ *Заявка на вывод отклонена*\n\n"
+                    f"💰 Сумма: {amount} ★\n"
+                    f"📝 Причина: {reason}",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except:
+                pass
+        else:
+            await update.message.reply_text(f"❌ Ошибка")
+        
+        context.user_data.pop('awaiting')
+        context.user_data.pop('reject_withdrawal_id')
+        return
+    
+    # ===== ОБРАБОТКА ОТКАЗА NFT =====
+    
+    if state == 'reject_nft_reason':
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawal_id = context.user_data.get('reject_nft_id')
+        reason = text
+        
+        if db.reject_nft_withdrawal(withdrawal_id, user_id, reason):
+            await update.message.reply_text(f"✅ Заявка #{withdrawal_id} отклонена, снежинки возвращены")
+            
+            # Уведомляем пользователя
+            withdrawal = db.get_nft_withdrawal(withdrawal_id)
+            try:
+                await context.bot.send_message(
+                    withdrawal[1],
+                    f"❌ *Заявка на вывод NFT отклонена*\n\n"
+                    f"🎁 {withdrawal[2]}\n"
+                    f"📝 Причина: {reason}\n"
+                    f"❄️ Снежинки возвращены на баланс.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except:
+                pass
+        else:
+            await update.message.reply_text(f"❌ Ошибка")
+        
+        context.user_data.pop('awaiting')
+        context.user_data.pop('reject_nft_id')
+        return
+    
+    # ===== ОБРАБОТКА ПРОМОКОДОВ =====
+    
+    if state == 'promocode':
+        result = db.activate_promocode(user_id, text.upper().strip())
+        
+        if result['success']:
+            await update.message.reply_text(f"✅ Промокод активирован!\n💰 +{result['amount']} ★")
+        else:
+            await update.message.reply_text(f"❌ {result['reason']}")
+        
+        context.user_data.pop('awaiting')
+        return
+    
+    if state == 'promo_amount':
+        if user_id not in ADMIN_IDS:
+            return
+        
+        try:
+            amount = int(text)
+            if amount <= 0:
+                await update.message.reply_text("❌ Сумма должна быть больше 0")
+                return
+            
+            context.user_data['promo_amount'] = amount
+            context.user_data['promo_step'] = 'days'
+            context.user_data['awaiting'] = 'promo_days'
+            await update.message.reply_text("📅 Введите срок действия (дни):")
+        except:
+            await update.message.reply_text("❌ Введите число")
+        return
+    
+    if state == 'promo_days':
+        if user_id not in ADMIN_IDS:
+            return
+        
+        try:
+            days = int(text)
+            if days <= 0:
+                await update.message.reply_text("❌ Срок должен быть больше 0")
+                return
+            
+            context.user_data['promo_days'] = days
+            context.user_data['promo_step'] = 'uses'
+            context.user_data['awaiting'] = 'promo_uses'
+            await update.message.reply_text("🔄 Введите максимальное количество использований (0 = безлимит):")
+        except:
+            await update.message.reply_text("❌ Введите число")
+        return
+    
+    if state == 'promo_uses':
+        if user_id not in ADMIN_IDS:
+            return
+        
+        try:
+            max_uses = int(text)
+            amount = context.user_data['promo_amount']
+            days = context.user_data['promo_days']
+            
+            code = db.generate_promocode(amount, days, max_uses, user_id)
+            
+            await update.message.reply_text(
+                f"✅ *Промокод создан!*\n\n"
+                f"Код: `{code}`\n"
+                f"Сумма: {amount} ★\n"
+                f"Срок: {days} дней\n"
+                f"Макс. использований: {max_uses if max_uses > 0 else '∞'}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            context.user_data.pop('awaiting')
+            context.user_data.pop('promo_amount')
+            context.user_data.pop('promo_days')
+            context.user_data.pop('promo_uses')
+            context.user_data.pop('promo_step')
+        except:
+            await update.message.reply_text("❌ Введите число")
+        return
+    
+    # ===== ОБРАБОТКА ВЫВОДА =====
+    
     if state == 'telegram':
         username = text.strip().replace('@', '')
         db.update_telegram_username(user_id, username)
@@ -1531,7 +2166,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         admin_id,
-                        f"⏳ Заявка #{withdrawal_id}\n👤 @{update.effective_user.username or user_id}\n📱 @{user[9]}\n💰 {amount} ★"
+                        f"⏳ *Новая заявка на вывод*\n\n"
+                        f"👤 @{update.effective_user.username or user_id}\n"
+                        f"📱 На Telegram: @{user[9]}\n"
+                        f"💰 Сумма: {amount} ★\n"
+                        f"🆔 #{withdrawal_id}",
+                        parse_mode=ParseMode.MARKDOWN
                     )
                 except:
                     pass
@@ -1561,13 +2201,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         admin_id,
-                        f"⏳ Заявка #{withdrawal_id}\n👤 @{update.effective_user.username or user_id}\n💳 {user[8]}\n💰 {amount} ★"
+                        f"⏳ *Новая заявка на вывод*\n\n"
+                        f"👤 @{update.effective_user.username or user_id}\n"
+                        f"💳 CryptoBot ID: {user[8]}\n"
+                        f"💰 Сумма: {amount} ★\n"
+                        f"🆔 #{withdrawal_id}",
+                        parse_mode=ParseMode.MARKDOWN
                     )
                 except:
                     pass
             
         except:
             await update.message.reply_text("❌ Введите число")
+    
+    # ===== ОБРАБОТКА РАССЫЛКИ =====
     
     elif state == 'broadcast':
         if user_id not in ADMIN_IDS:
@@ -1605,12 +2252,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("=" * 60)
-    print(f"🚀 ЗАПУСК {BOT_NAME}")
+    print(f"🚀 ЗАПУСК {BOT_NAME} (ОБНОВЛЕНИЕ 1.0)")
     print("=" * 60)
-    print("✅ Telegram Stars пополнение")
-    print("✅ CryptoBot пополнение")
-    print("✅ Вывод на Telegram/CryptoBot")
-    print("✅ Админ-панель с картинками")
+    print("✅ Пагинация пользователей")
+    print("✅ Поиск пользователей")
+    print("✅ Сортировка")
+    print("✅ Причина отказа вывода (звёзды и NFT)")
+    print("✅ Промокоды")
+    print("✅ Вывод NFT по заявкам")
     print(f"✅ Твой ID {ADMIN_IDS[0]} - АДМИН")
     print("=" * 60)
     
