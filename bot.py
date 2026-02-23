@@ -14,7 +14,7 @@ import time
 
 # ======================== НАСТРОЙКА ========================
 TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "YOUR_CRYPTOBOT_API_KEY")
+CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "Y_CRYPTOBOT_API_KEY")
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 
 ADMIN_IDS = [5697184715]  # ТВОЙ ID
@@ -287,7 +287,6 @@ class Database:
             CASE_IMAGE_ID = result[0]
             logger.info(f"✅ Загружена картинка кейса")
     
-    # ========== ДОБАВЛЕННАЯ ФУНКЦИЯ ДЛЯ СОХРАНЕНИЯ КАРТИНОК ==========
     def save_image(self, key, file_id):
         """Сохранение ID картинки в базу данных"""
         global WELCOME_IMAGE_ID, CASE_IMAGE_ID
@@ -303,7 +302,6 @@ class Database:
         elif key == 'case_image':
             CASE_IMAGE_ID = file_id
             logger.info(f"✅ Сохранена картинка кейса")
-    # ===================================================================
     
     def get_user(self, user_id):
         self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -658,6 +656,33 @@ GAME_ODDS = {
     'slots': {'win_chance': 25, 'multiplier': 3.0, 'name': '🎰 Слоты'}
 }
 
+async def edit_message(query, text, keyboard=None):
+    """Универсальная функция для редактирования сообщений"""
+    if query.message.photo:
+        if keyboard:
+            await query.edit_message_caption(
+                caption=text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=keyboard
+            )
+        else:
+            await query.edit_message_caption(
+                caption=text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+    else:
+        if keyboard:
+            await query.edit_message_text(
+                text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=keyboard
+            )
+        else:
+            await query.edit_message_text(
+                text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+
 async def check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -782,7 +807,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         keyboard = [[InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]]
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     # ================== ПРАВИЛА ==================
     
@@ -803,7 +828,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         keyboard = [[InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]]
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     # ================== КАЗИНО ==================
     
@@ -824,7 +849,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]
         ]
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     # ================== ПОПОЛНЕНИЕ ==================
     
@@ -843,7 +868,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]
         ]
         
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data == "deposit_stars_menu":
         text = "⭐ *Пополнение Telegram Stars*\n\nВыберите сумму:"
@@ -860,7 +885,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [InlineKeyboardButton("◀️ Назад", callback_data="deposit_menu")]
         ]
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("stars_"):
         amount = int(data.replace("stars_", ""))
@@ -892,7 +917,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [InlineKeyboardButton("◀️ Назад", callback_data="deposit_menu")]
         ]
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("crypto_"):
         stars_amount = int(data.replace("crypto_", ""))
@@ -916,7 +941,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"После оплаты баланс зачислится автоматически."
             )
             keyboard = [[InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]]
-            await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+            await edit_message(query, text, InlineKeyboardMarkup(keyboard))
             
             for admin_id in ADMIN_IDS:
                 try:
@@ -928,7 +953,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except:
                     pass
         else:
-            await query.edit_message_text("❌ Ошибка создания счета")
+            await edit_message(query, "❌ Ошибка создания счета")
     
     # ================== ВЫВОД ==================
     
@@ -949,7 +974,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]
         ]
         
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data == "withdraw_settings":
         keyboard = [
@@ -958,54 +983,62 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("◀️ Назад", callback_data="withdraw_menu")]
         ]
         
-        await query.edit_message_text(
+        await edit_message(
+            query,
             "⚙️ *Настройки*\n\nВыберите что хотите указать:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            InlineKeyboardMarkup(keyboard)
         )
     
     elif data == "set_telegram":
         context.user_data['awaiting'] = 'telegram'
-        await query.edit_message_text(
-            "📱 *Укажите ваш Telegram Username*\n\nОтправьте username (без @):",
-            parse_mode=ParseMode.MARKDOWN
+        await edit_message(
+            query,
+            "📱 *Укажите ваш Telegram Username*\n\nОтправьте username (без @):"
         )
     
     elif data == "set_crypto":
         context.user_data['awaiting'] = 'crypto'
-        await query.edit_message_text(
-            "💳 *Укажите ваш CryptoBot ID*\n\nОтправьте ID (только цифры):",
-            parse_mode=ParseMode.MARKDOWN
+        await edit_message(
+            query,
+            "💳 *Укажите ваш CryptoBot ID*\n\nОтправьте ID (только цифры):"
         )
     
     elif data == "withdraw_telegram":
         if user[3] < 50:
-            await query.edit_message_text("❌ Минимум 50 ★")
+            await edit_message(query, "❌ Минимум 50 ★")
             return
         
         if not user[9]:
-            await query.edit_message_text("❌ Сначала укажите Telegram Username")
+            await edit_message(
+                query,
+                "❌ Сначала укажите Telegram Username",
+                InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ Указать", callback_data="set_telegram")]])
+            )
             return
         
         context.user_data['awaiting'] = 'withdraw_telegram_amount'
-        await query.edit_message_text(
-            f"📱 *Вывод на @{user[9]}*\n\nБаланс: {user[3]} ★\nВведите сумму:",
-            parse_mode=ParseMode.MARKDOWN
+        await edit_message(
+            query,
+            f"📱 *Вывод на @{user[9]}*\n\nБаланс: {user[3]} ★\nВведите сумму:"
         )
     
     elif data == "withdraw_crypto":
         if user[3] < 50:
-            await query.edit_message_text("❌ Минимум 50 ★")
+            await edit_message(query, "❌ Минимум 50 ★")
             return
         
         if not user[8]:
-            await query.edit_message_text("❌ Сначала укажите CryptoBot ID")
+            await edit_message(
+                query,
+                "❌ Сначала укажите CryptoBot ID",
+                InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ Указать", callback_data="set_crypto")]])
+            )
             return
         
         context.user_data['awaiting'] = 'withdraw_crypto_amount'
-        await query.edit_message_text(
-            f"💳 *Вывод на CryptoBot ID {user[8]}*\n\nБаланс: {user[3]} ★\nВведите сумму:",
-            parse_mode=ParseMode.MARKDOWN
+        await edit_message(
+            query,
+            f"💳 *Вывод на CryptoBot ID {user[8]}*\n\nБаланс: {user[3]} ★\nВведите сумму:"
         )
     
     # ================== ЗИМНИЙ МАГАЗИН ==================
@@ -1027,7 +1060,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton(f"🎁 {item['name']}", callback_data=f"buy_{item['name']}")])
         
         keyboard.append([InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")])
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("buy_"):
         item_name = data.replace("buy_", "")
@@ -1036,11 +1069,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if item['name'] == item_name:
                 if user[4] >= item['price']:
                     if db.buy_winter_nft(user_id, item_name):
-                        await query.edit_message_text(f"✅ Куплено: {item_name}")
+                        await edit_message(query, f"✅ Куплено: {item_name}")
                     else:
-                        await query.edit_message_text("❌ Ошибка")
+                        await edit_message(query, "❌ Ошибка")
                 else:
-                    await query.edit_message_text(f"❌ Не хватает {item['price'] - user[4]} ✨")
+                    await edit_message(query, f"❌ Не хватает {item['price'] - user[4]} ✨")
                 break
     
     # ================== КЕЙС ==================
@@ -1070,23 +1103,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
             else:
-                await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+                await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("open_case_"):
         case_id = int(data.replace("open_case_", ""))
         case_price = 35
         
         if user[3] < case_price:
-            await query.edit_message_text(f"❌ Нужно {case_price} ★")
+            await edit_message(query, f"❌ Нужно {case_price} ★")
             return
         
         db.update_balance(user_id, -case_price)
         result = db.open_case(case_id, user_id)
         
         if result:
-            await query.edit_message_text(f"🎉 Вы выиграли: {result['name']}!")
+            await edit_message(query, f"🎉 Вы выиграли: {result['name']}!")
         else:
-            await query.edit_message_text("❌ Ошибка")
+            await edit_message(query, "❌ Ошибка")
     
     # ================== РЕФЕРАЛЫ ==================
     
@@ -1102,21 +1135,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         keyboard = [[InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]]
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     # ================== ЕЖЕДНЕВНЫЙ БОНУС ==================
     
     elif data == "daily_bonus":
         if db.check_daily_bonus(user_id):
-            await query.edit_message_text("🎁 +5 ★")
+            await edit_message(query, "🎁 +5 ★")
         else:
-            await query.edit_message_text("❌ Бонус уже получен")
+            await edit_message(query, "❌ Бонус уже получен")
     
     # ================== АДМИН-ПАНЕЛЬ ==================
     
     elif data == "admin_panel":
         if user_id not in ADMIN_IDS:
-            await query.edit_message_text("❌ Нет прав")
+            await edit_message(query, "❌ Нет прав")
             return
         
         stats = db.get_total_stats()
@@ -1141,7 +1174,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")]
         ]
         
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data == "admin_images":
         if user_id not in ADMIN_IDS:
@@ -1160,16 +1193,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]
         ]
         
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data == "upload_welcome":
         if user_id not in ADMIN_IDS:
             return
         
         context.user_data['awaiting'] = 'upload_welcome'
-        await query.edit_message_text(
-            "🖼️ *Загрузите картинку для приветствия*\n\nОтправьте фото:",
-            parse_mode=ParseMode.MARKDOWN
+        await edit_message(
+            query,
+            "🖼️ *Загрузите картинку для приветствия*\n\nОтправьте фото:"
         )
     
     elif data == "upload_case":
@@ -1177,9 +1210,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         context.user_data['awaiting'] = 'upload_case'
-        await query.edit_message_text(
-            "🖼️ *Загрузите картинку для кейса*\n\nОтправьте фото:",
-            parse_mode=ParseMode.MARKDOWN
+        await edit_message(
+            query,
+            "🖼️ *Загрузите картинку для кейса*\n\nОтправьте фото:"
         )
     
     elif data == "admin_users":
@@ -1195,7 +1228,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"{status}{admin} {u[2]} (@{u[1]}) — {u[3]} ★ | ✨ {u[4]}\n"
         
         keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]]
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data == "admin_bans":
         if user_id not in ADMIN_IDS:
@@ -1204,7 +1237,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         banned = db.get_banned_users()
         
         if not banned:
-            await query.edit_message_text("✅ Нет забаненных")
+            await edit_message(query, "✅ Нет забаненных")
             return
         
         text = "🔨 *Забанены:*\n\n"
@@ -1215,7 +1248,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton(f"✅ Разбанить {b[0]}", callback_data=f"unban_{b[0]}")])
         
         keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("unban_"):
         if user_id not in ADMIN_IDS:
@@ -1224,9 +1257,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ban_user_id = int(data.replace("unban_", ""))
         
         if db.unban_user(user_id, ban_user_id):
-            await query.edit_message_text(f"✅ Пользователь {ban_user_id} разбанен")
+            await edit_message(query, f"✅ Пользователь {ban_user_id} разбанен")
         else:
-            await query.edit_message_text("❌ Ошибка")
+            await edit_message(query, "❌ Ошибка")
     
     elif data == "admin_withdrawals":
         if user_id not in ADMIN_IDS:
@@ -1235,7 +1268,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         withdrawals = db.get_pending_withdrawals()
         
         if not withdrawals:
-            await query.edit_message_text("✅ Нет заявок")
+            await edit_message(query, "✅ Нет заявок")
             return
         
         text = "⏳ *Заявки:*\n\n"
@@ -1256,7 +1289,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         
         keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
     elif data.startswith("approve_"):
         if user_id not in ADMIN_IDS:
@@ -1265,9 +1298,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         withdrawal_id = int(data.replace("approve_", ""))
         
         if db.approve_withdrawal(withdrawal_id, user_id):
-            await query.edit_message_text("✅ Заявка одобрена")
+            await edit_message(query, "✅ Заявка одобрена")
         else:
-            await query.edit_message_text("❌ Ошибка")
+            await edit_message(query, "❌ Ошибка")
     
     elif data.startswith("reject_"):
         if user_id not in ADMIN_IDS:
@@ -1276,18 +1309,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         withdrawal_id = int(data.replace("reject_", ""))
         
         if db.reject_withdrawal(withdrawal_id, user_id):
-            await query.edit_message_text("❌ Заявка отклонена")
+            await edit_message(query, "❌ Заявка отклонена")
         else:
-            await query.edit_message_text("❌ Ошибка")
+            await edit_message(query, "❌ Ошибка")
     
     elif data == "admin_broadcast":
         if user_id not in ADMIN_IDS:
             return
         
         context.user_data['awaiting'] = 'broadcast'
-        await query.edit_message_text(
-            "📢 *Рассылка*\n\nОтправьте сообщение (можно с фото):",
-            parse_mode=ParseMode.MARKDOWN
+        await edit_message(
+            query,
+            "📢 *Рассылка*\n\nОтправьте сообщение (можно с фото):"
         )
     
     # ================== ИГРЫ ==================
@@ -1296,26 +1329,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game_key = data.replace('game_', '')
         context.user_data['game'] = game_key
         
-        await query.edit_message_text(
-            f"🎮 *{GAME_ODDS[game_key]['name']}*\n\n💰 Баланс: {user[3]} ★\n\nВыберите ставку:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("10 ★", callback_data="bet_10"),
-                 InlineKeyboardButton("25 ★", callback_data="bet_25"),
-                 InlineKeyboardButton("50 ★", callback_data="bet_50")],
-                [InlineKeyboardButton("100 ★", callback_data="bet_100"),
-                 InlineKeyboardButton("250 ★", callback_data="bet_250"),
-                 InlineKeyboardButton("500 ★", callback_data="bet_500")],
-                [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
-            ])
-        )
+        text = f"🎮 *{GAME_ODDS[game_key]['name']}*\n\n💰 Баланс: {user[3]} ★\n\nВыберите ставку:"
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("10 ★", callback_data="bet_10"),
+                InlineKeyboardButton("25 ★", callback_data="bet_25"),
+                InlineKeyboardButton("50 ★", callback_data="bet_50")
+            ],
+            [
+                InlineKeyboardButton("100 ★", callback_data="bet_100"),
+                InlineKeyboardButton("250 ★", callback_data="bet_250"),
+                InlineKeyboardButton("500 ★", callback_data="bet_500")
+            ],
+            [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
+        ])
+        await edit_message(query, text, keyboard)
     
     elif data.startswith("bet_"):
         bet = int(data.replace("bet_", ""))
         game = context.user_data.get('game', 'flip')
         
         if bet > user[3]:
-            await query.edit_message_text(f"❌ Недостаточно! Баланс: {user[3]} ★")
+            await edit_message(query, f"❌ Недостаточно! Баланс: {user[3]} ★")
             return
         
         odds = GAME_ODDS[game]
@@ -1335,11 +1370,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             win_amount = int(bet * odds['multiplier'])
             db.update_balance(user_id, win_amount)
             db.add_game(user_id, game, bet, odds['multiplier'], win_amount, 'win')
-            await query.edit_message_text(f"🎉 *Выигрыш!*\n\n💰 {win_amount} ★ (x{odds['multiplier']})")
+            await edit_message(query, f"🎉 *Выигрыш!*\n\n💰 {win_amount} ★ (x{odds['multiplier']})")
         else:
             db.add_lost_stars(user_id, bet)
             db.add_game(user_id, game, bet, 0, 0, 'lose')
-            await query.edit_message_text(f"😢 *Проигрыш*\n\n✨ +{int(bet * 0.5)} снежинок")
+            await edit_message(query, f"😢 *Проигрыш*\n\n✨ +{int(bet * 0.5)} снежинок")
     
     # ================== ГЛАВНОЕ МЕНЮ ==================
     
@@ -1377,7 +1412,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❄️ Снежинки: {user[4]} ✨"
         )
         
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.pre_checkout_query
