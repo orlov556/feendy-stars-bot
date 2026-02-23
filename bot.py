@@ -279,12 +279,15 @@ class Database:
         result = self.cursor.fetchone()
         if result:
             WELCOME_IMAGE_ID = result[0]
+            logger.info(f"✅ Загружена картинка приветствия")
         
         self.cursor.execute('SELECT value FROM settings WHERE key = ?', ('case_image',))
         result = self.cursor.fetchone()
         if result:
             CASE_IMAGE_ID = result[0]
+            logger.info(f"✅ Загружена картинка кейса")
     
+    # ========== ДОБАВЛЕННАЯ ФУНКЦИЯ ДЛЯ СОХРАНЕНИЯ КАРТИНОК ==========
     def save_image(self, key, file_id):
         """Сохранение ID картинки в базу данных"""
         global WELCOME_IMAGE_ID, CASE_IMAGE_ID
@@ -296,8 +299,11 @@ class Database:
         
         if key == 'welcome_image':
             WELCOME_IMAGE_ID = file_id
+            logger.info(f"✅ Сохранена картинка приветствия")
         elif key == 'case_image':
             CASE_IMAGE_ID = file_id
+            logger.info(f"✅ Сохранена картинка кейса")
+    # ===================================================================
     
     def get_user(self, user_id):
         self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -1319,7 +1325,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if game == 'flip':
             msg = await context.bot.send_dice(chat_id=user_id, emoji='🪙')
             result = msg.dice.value
-            win = (result == 1 and 'орёл' in ['орёл']) or (result == 2 and 'решка' in ['решка'])
+            win = (result == 1)  # 1 - орёл, 2 - решка
         else:
             win_chance = odds['win_chance']
             roll = random.randint(1, 100)
@@ -1412,11 +1418,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ===== ОБРАБОТКА ЗАГРУЗКИ КАРТИНОК =====
     if user_id in ADMIN_IDS:
-        if 'upload_welcome' in context.user_data:
+        if context.user_data.get('awaiting') == 'upload_welcome':
             if update.message.photo:
                 file_id = update.message.photo[-1].file_id
                 db.save_image('welcome_image', file_id)
-                context.user_data.pop('upload_welcome')
+                context.user_data.pop('awaiting', None)
                 await update.message.reply_text(
                     "✅ Картинка для приветствия сохранена!",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ В админ-панель", callback_data="admin_panel")]])
@@ -1425,12 +1431,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text("❌ Отправьте фото")
                 return
-                
-        if 'upload_case' in context.user_data:
+        
+        if context.user_data.get('awaiting') == 'upload_case':
             if update.message.photo:
                 file_id = update.message.photo[-1].file_id
                 db.save_image('case_image', file_id)
-                context.user_data.pop('upload_case')
+                context.user_data.pop('awaiting', None)
                 await update.message.reply_text(
                     "✅ Картинка для кейса сохранена!",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ В админ-панель", callback_data="admin_panel")]])
