@@ -161,18 +161,6 @@ class Database:
             )
         ''')
         
-        # Таблица инвентаря
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS inventory (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                item_name TEXT,
-                item_price INTEGER,
-                source TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
         # Таблица заявок на вывод звёзд
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS withdrawals (
@@ -746,20 +734,20 @@ class Database:
         # Проверяем существование кода
         promo = self.get_promocode_info(code)
         if not promo:
-            return {'success': False, 'reason': 'Код не найден'}
+            return {'success': False, 'reason': '❌ Код не найден'}
         
         # Проверяем срок действия
         if promo[3] and datetime.now().date() > datetime.strptime(promo[3], '%Y-%m-%d').date():
-            return {'success': False, 'reason': 'Промокод истёк'}
+            return {'success': False, 'reason': '❌ Промокод истёк'}
         
         # Проверяем лимит использований
         if promo[4] > 0 and promo[5] >= promo[4]:
-            return {'success': False, 'reason': 'Промокод использован максимальное количество раз'}
+            return {'success': False, 'reason': '❌ Промокод уже использован максимальное количество раз'}
         
         # Проверяем, не активировал ли уже пользователь этот код
         self.cursor.execute('SELECT * FROM promocode_uses WHERE user_id = ? AND code = ?', (user_id, code))
         if self.cursor.fetchone():
-            return {'success': False, 'reason': 'Вы уже активировали этот промокод'}
+            return {'success': False, 'reason': '❌ Вы уже активировали этот промокод'}
         
         # Начисляем бонус
         self.update_balance(user_id, promo[2])
@@ -889,11 +877,6 @@ async def edit_message(query, text, keyboard=None):
                 )
     except Exception as e:
         logger.error(f"Error editing message: {e}")
-        # Пробуем отправить новое сообщение если редактирование не удалось
-        if keyboard:
-            await query.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
-        else:
-            await query.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 async def check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -949,7 +932,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu")
         ],
         [
-            InlineKeyboardButton("🎟️ Активировать промокод", callback_data="activate_promo"),
+            InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo"),
             InlineKeyboardButton("📊 Правила", callback_data="rules")
         ]
     ]
@@ -1313,12 +1296,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await edit_message(query, "❌ Заявка уже обработана")
             return
         
-        # Уведомление админу
+        # Уведомление админу с кнопками!
         for admin_id in ADMIN_IDS:
             try:
                 keyboard_admin = [
-                    [InlineKeyboardButton(f"✅ Вывести #{withdraw_id}", callback_data=f"approve_nft_{withdraw_id}"),
-                     InlineKeyboardButton(f"❌ Отказать #{withdraw_id}", callback_data=f"reject_nft_{withdraw_id}")]
+                    [InlineKeyboardButton(f"✅ Принять #{withdraw_id}", callback_data=f"approve_nft_{withdraw_id}"),
+                     InlineKeyboardButton(f"❌ Отклонить #{withdraw_id}", callback_data=f"reject_nft_{withdraw_id}")]
                 ]
                 
                 await context.bot.send_message(
@@ -1331,8 +1314,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup(keyboard_admin)
                 )
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Ошибка отправки NFT заявки админу: {e}")
         
         await edit_message(
             query,
@@ -1458,7 +1441,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
-    # ================== УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (ПАГИНАЦИЯ, ПОИСК, СОРТИРОВКА) ==================
+    # ================== УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ==================
     
     elif data.startswith("admin_users_page_"):
         if user_id not in ADMIN_IDS:
@@ -1526,7 +1509,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔍 *Поиск пользователя*\n\nВведите ID или Username:"
         )
     
-    # ================== ЗАЯВКИ НА ВЫВОД ЗВЁЗД С ПРИЧИНОЙ ==================
+    # ================== ЗАЯВКИ НА ВЫВОД ЗВЁЗД ==================
     
     elif data == "admin_withdrawals":
         if user_id not in ADMIN_IDS:
@@ -1562,19 +1545,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
         await edit_message(query, text, InlineKeyboardMarkup(keyboard))
     
-    elif data.startswith("reject_withdrawal_"):
-        if user_id not in ADMIN_IDS:
-            return
-        
-        withdrawal_id = int(data.replace("reject_withdrawal_", ""))
-        context.user_data['reject_withdrawal_id'] = withdrawal_id
-        context.user_data['awaiting'] = 'reject_withdrawal_reason'
-        
-        await edit_message(
-            query,
-            f"❌ *Отклонение заявки #{withdrawal_id}*\n\nНапишите причину отказа:"
-        )
-    
     elif data.startswith("approve_withdrawal_"):
         if user_id not in ADMIN_IDS:
             return
@@ -1599,6 +1569,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         else:
             await edit_message(query, f"❌ Ошибка")
+    
+    elif data.startswith("reject_withdrawal_"):
+        if user_id not in ADMIN_IDS:
+            return
+        
+        withdrawal_id = int(data.replace("reject_withdrawal_", ""))
+        context.user_data['reject_withdrawal_id'] = withdrawal_id
+        context.user_data['awaiting'] = 'reject_withdrawal_reason'
+        
+        await edit_message(
+            query,
+            f"❌ *Отклонение заявки #{withdrawal_id}*\n\nНапишите причину отказа:"
+        )
     
     # ================== ЗАЯВКИ НА ВЫВОД NFT ==================
     
@@ -1916,7 +1899,8 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
             try:
                 await context.bot.send_message(
                     admin_id,
-                    f"💰 Пополнение Stars\n👤 @{user[1] or user_id}\n💎 {amount} ★"
+                    f"💰 *Пополнение Stars*\n\n👤 @{user[1] or user_id}\n💎 {amount} ★",
+                    parse_mode=ParseMode.MARKDOWN
                 )
             except:
                 pass
@@ -1985,7 +1969,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('awaiting')
         return
     
-    # ===== ОБРАБОТКА ОТКАЗА С ПРИЧИНОЙ =====
+    # ===== ОБРАБОТКА ОТКАЗА ВЫВОДА ЗВЁЗД =====
     
     if state == 'reject_withdrawal_reason':
         if user_id not in ADMIN_IDS:
@@ -2017,7 +2001,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('reject_withdrawal_id')
         return
     
-    # ===== ОБРАБОТКА ОТКАЗА NFT =====
+    # ===== ОБРАБОТКА ОТКАЗА ВЫВОДА NFT =====
     
     if state == 'reject_nft_reason':
         if user_id not in ADMIN_IDS:
@@ -2057,7 +2041,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if result['success']:
             await update.message.reply_text(f"✅ Промокод активирован!\n💰 +{result['amount']} ★")
         else:
-            await update.message.reply_text(f"❌ {result['reason']}")
+            await update.message.reply_text(f"{result['reason']}")
         
         context.user_data.pop('awaiting')
         return
@@ -2162,19 +2146,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop('awaiting')
             await update.message.reply_text(f"✅ Заявка #{withdrawal_id} создана")
             
+            # Уведомление админу с кнопками!
             for admin_id in ADMIN_IDS:
                 try:
+                    keyboard_admin = [
+                        [InlineKeyboardButton(f"✅ Принять #{withdrawal_id}", callback_data=f"approve_withdrawal_{withdrawal_id}"),
+                         InlineKeyboardButton(f"❌ Отклонить #{withdrawal_id}", callback_data=f"reject_withdrawal_{withdrawal_id}")]
+                    ]
+                    
                     await context.bot.send_message(
                         admin_id,
-                        f"⏳ *Новая заявка на вывод*\n\n"
-                        f"👤 @{update.effective_user.username or user_id}\n"
-                        f"📱 На Telegram: @{user[9]}\n"
+                        f"⏳ *Новая заявка на вывод звёзд!*\n\n"
+                        f"👤 Пользователь: @{update.effective_user.username or user_id}\n"
                         f"💰 Сумма: {amount} ★\n"
-                        f"🆔 #{withdrawal_id}",
-                        parse_mode=ParseMode.MARKDOWN
+                        f"💳 Способ: 📱 Telegram\n"
+                        f"📬 Кошелёк: @{user[9]}\n"
+                        f"🆔 Заявка: #{withdrawal_id}",
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=InlineKeyboardMarkup(keyboard_admin)
                     )
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления админу: {e}")
             
         except:
             await update.message.reply_text("❌ Введите число")
@@ -2197,19 +2189,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop('awaiting')
             await update.message.reply_text(f"✅ Заявка #{withdrawal_id} создана")
             
+            # Уведомление админу с кнопками!
             for admin_id in ADMIN_IDS:
                 try:
+                    keyboard_admin = [
+                        [InlineKeyboardButton(f"✅ Принять #{withdrawal_id}", callback_data=f"approve_withdrawal_{withdrawal_id}"),
+                         InlineKeyboardButton(f"❌ Отклонить #{withdrawal_id}", callback_data=f"reject_withdrawal_{withdrawal_id}")]
+                    ]
+                    
                     await context.bot.send_message(
                         admin_id,
-                        f"⏳ *Новая заявка на вывод*\n\n"
-                        f"👤 @{update.effective_user.username or user_id}\n"
-                        f"💳 CryptoBot ID: {user[8]}\n"
+                        f"⏳ *Новая заявка на вывод звёзд!*\n\n"
+                        f"👤 Пользователь: @{update.effective_user.username or user_id}\n"
                         f"💰 Сумма: {amount} ★\n"
-                        f"🆔 #{withdrawal_id}",
-                        parse_mode=ParseMode.MARKDOWN
+                        f"💳 Способ: 💳 CryptoBot\n"
+                        f"📬 Кошелёк: {user[8]}\n"
+                        f"🆔 Заявка: #{withdrawal_id}",
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=InlineKeyboardMarkup(keyboard_admin)
                     )
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления админу: {e}")
             
         except:
             await update.message.reply_text("❌ Введите число")
@@ -2234,7 +2234,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             for u in users:
                 try:
-                    await context.bot.send_photo(chat_id=u[0], photo=photo, caption=caption)
+                    await context.bot.send_photo(chat_id=u[0], photo=photo, caption=caption, parse_mode=ParseMode.MARKDOWN)
                     sent += 1
                     await asyncio.sleep(0.05)
                 except:
@@ -2242,7 +2242,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             for u in users:
                 try:
-                    await context.bot.send_message(chat_id=u[0], text=text)
+                    await context.bot.send_message(chat_id=u[0], text=text, parse_mode=ParseMode.MARKDOWN)
                     sent += 1
                     await asyncio.sleep(0.05)
                 except:
@@ -2260,6 +2260,7 @@ def main():
     print("✅ Причина отказа вывода (звёзды и NFT)")
     print("✅ Промокоды")
     print("✅ Вывод NFT по заявкам")
+    print("✅ Кнопки в заявках ИСПРАВЛЕНЫ!")
     print(f"✅ Твой ID {ADMIN_IDS[0]} - АДМИН")
     print("=" * 60)
     
