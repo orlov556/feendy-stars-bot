@@ -22,8 +22,8 @@ ADMIN_IDS = [5697184715]  # ТВОЙ ID
 BOT_NAME = "FEENDY STARS"
 
 # Глобальные переменные для хранения ID картинок
-WELCOME_IMAGE_ID = "AAMCAgADGQEC21jFaZw9t7gmxgwmtIE9J8a1M3AO-58AApGKAALJHOlICQeKmsnSacQBAAdtAAM6BA" 
-CASE_IMAGE_ID = "AAMCAgADGQEC22KEaZxGDeKoGg8LhWhM5m9c1cSGBiIAAieLAALJHOlIpkQD4xluzKIBAAdtAAM6BA"
+WELCOME_IMAGE_ID = None
+CASE_IMAGE_ID = None 
 
 # Курсы валют
 RUB_PER_STAR = 1.3        # 1 звезда в боте = 1.3 рубля
@@ -1830,6 +1830,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
