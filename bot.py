@@ -116,7 +116,6 @@ class Database:
         self._init_shop()
 
     def _create_tables(self):
-        # Пользователи
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -136,7 +135,6 @@ class Database:
                 total_lost INTEGER DEFAULT 0
             )
         ''')
-        # Игры
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS games (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,7 +147,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Инвентарь для NFT
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +158,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Кейсы
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS cases (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,7 +166,6 @@ class Database:
                 items TEXT
             )
         ''')
-        # Заявки на вывод звёзд
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS withdrawals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,7 +180,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Заявки на вывод NFT
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS nft_withdrawals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +193,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Промокоды
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS promocodes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,7 +205,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Активации промокодов
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS promocode_uses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,7 +213,6 @@ class Database:
                 used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Платежи
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,14 +224,12 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Настройки
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
             )
         ''')
-        # Зимний магазин (товары)
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS shop (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -608,15 +597,15 @@ class Database:
         row = self.cursor.fetchone()
         if row:
             names = {
-                'flip': 'Орёл и решка',
-                'roulette': 'Русская рулетка',
-                'slots': 'Слоты',
-                'mines': 'Минное поле',
-                'dice': 'Кости',
-                'football': 'Футбол',
-                'basketball': 'Баскетбол',
-                'darts': 'Дартс',
-                'bowling': 'Боулинг'
+                'flip': '🪙 Орёл и решка',
+                'roulette': '💀 Русская рулетка',
+                'slots': '🎰 Слоты',
+                'mines': '💣 Минное поле',
+                'dice': '🎲 Кости',
+                'football': '⚽ Футбол',
+                'basketball': '🏀 Баскетбол',
+                'darts': '🎯 Дартс',
+                'bowling': '🎳 Боулинг'
             }
             return names.get(row[0], row[0])
         return '—'
@@ -736,8 +725,6 @@ class Database:
 # ======================== БОТ ========================
 
 db = Database()
-
-# ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==================
 
 async def edit_message(query, text, keyboard=None):
     try:
