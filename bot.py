@@ -4,16 +4,17 @@ import sqlite3
 import asyncio
 import json
 import os
-import tempfile
 import requests
 import time
 import string
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Callable
+from contextlib import suppress
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, PreCheckoutQueryHandler
 from telegram.constants import ParseMode
+from telegram.error import TelegramError
 
 # ======================== НАСТРОЙКА ========================
 TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -55,8 +56,21 @@ class CryptoBotAPI:
     def create_invoice(self, stars_amount, currency="TON", description="Пополнение баланса FEENDY STARS"):
         try:
             url = f"{CRYPTOBOT_API_URL}/createInvoice"
+            
+            # Проверка минимальной суммы
+            if stars_amount < 1:
+                logger.warning(f"Attempt to create invoice for {stars_amount} stars (minimum 1)")
+                return None
+                
             ton_amount = round(stars_amount * TON_PER_STAR, 2)
             rub_amount = stars_amount * RUB_PER_STAR
+            
+            # Проверка минимальной суммы в TON
+            if ton_amount < 0.1:
+                ton_amount = 0.1
+                stars_amount = int(ton_amount / TON_PER_STAR)
+                rub_amount = stars_amount * RUB_PER_STAR
+            
             payload = {
                 "asset": currency,
                 "amount": str(ton_amount),
@@ -65,11 +79,19 @@ class CryptoBotAPI:
                 "paid_btn_url": f"https://t.me/{BOT_USERNAME}",
                 "payload": f"crypto_{stars_amount}_{int(time.time())}"
             }
+            
+            logger.info(f"Creating CryptoBot invoice: {stars_amount} ★ = {ton_amount} TON")
+            
             response = requests.post(url, headers=self.headers, json=payload, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('ok'):
+                    logger.info(f"Invoice created successfully: {data['result']['invoice_id']}")
                     return data['result']
+                else:
+                    logger.error(f"CryptoBot error: {data.get('error', 'Unknown error')}")
+            else:
+                logger.error(f"CryptoBot HTTP error: {response.status_code}")
             return None
         except Exception as e:
             logger.error(f"CryptoBot API error: {e}")
@@ -108,6 +130,7 @@ class Database:
                 pass
 
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
         self.cursor = self.conn.cursor()
         self._create_tables()
         self._init_admin()
@@ -371,25 +394,29 @@ class Database:
         return self.cursor.fetchall()
 
     def open_case(self, case_id, user_id):
-        self.cursor.execute('SELECT * FROM cases WHERE id = ?', (case_id,))
-        case = self.cursor.fetchone()
-        if not case:
+        try:
+            self.cursor.execute('SELECT * FROM cases WHERE id = ?', (case_id,))
+            case = self.cursor.fetchone()
+            if not case:
+                return None
+            items = json.loads(case[3])
+            total = sum(item['chance'] for item in items)
+            r = random.uniform(0, total)
+            cur = 0
+            for item in items:
+                cur += item['chance']
+                if r <= cur:
+                    if item['type'] == 'nft':
+                        self.cursor.execute('''
+                            INSERT INTO inventory (user_id, item_name, item_type, item_value, source)
+                            VALUES (?, ?, ?, ?, 'case')
+                        ''', (user_id, item['name'], item['type'], item['value']))
+                        self.conn.commit()
+                    return item
             return None
-        items = json.loads(case[3])
-        total = sum(item['chance'] for item in items)
-        r = random.uniform(0, total)
-        cur = 0
-        for item in items:
-            cur += item['chance']
-            if r <= cur:
-                if item['type'] == 'nft':
-                    self.cursor.execute('''
-                        INSERT INTO inventory (user_id, item_name, item_type, item_value, source)
-                        VALUES (?, ?, ?, ?, 'case')
-                    ''', (user_id, item['name'], item['type'], item['value']))
-                    self.conn.commit()
-                return item
-        return None
+        except Exception as e:
+            logger.error(f"Error opening case: {e}")
+            return None
 
     def get_inventory(self, user_id):
         self.cursor.execute('SELECT item_name, item_value FROM inventory WHERE user_id = ?', (user_id,))
@@ -424,6 +451,39 @@ class Database:
             self.conn.commit()
             return bonus
         return 0
+
+    # ================== ПЛАТЕЖИ ==================
+
+    def add_payment(self, user_id, amount, method, invoice_id=None, status='pending'):
+        self.cursor.execute('''
+            INSERT INTO payments (user_id, amount, method, invoice_id, status)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, amount, method, invoice_id, status))
+        self.conn.commit()
+        return self.cursor.lastrowid
+
+    def confirm_payment(self, invoice_id):
+        self.cursor.execute('SELECT * FROM payments WHERE invoice_id = ?', (invoice_id,))
+        payment = self.cursor.fetchone()
+        if payment:
+            self.cursor.execute('UPDATE payments SET status = "completed" WHERE invoice_id = ?', (invoice_id,))
+            self.update_balance(payment[1], payment[2])
+            self.conn.commit()
+            return True
+        return False
+
+    def confirm_stars_payment(self, payload):
+        try:
+            parts = payload.split('_')
+            if len(parts) >= 3 and parts[0] == 'stars':
+                user_id = int(parts[1])
+                amount = int(parts[2])
+                self.update_balance(user_id, amount)
+                self.add_payment(user_id, amount, 'stars', None, 'completed')
+                return True
+        except Exception as e:
+            logger.error(f"Error confirming stars payment: {e}")
+        return False
 
     # ================== ЗИМНИЙ МАГАЗИН ==================
 
@@ -475,6 +535,8 @@ class Database:
             UPDATE withdrawals SET status = 'approved', admin_id = ?, processed_at = CURRENT_TIMESTAMP
             WHERE id = ?
         ''', (admin_id, withdrawal_id))
+        self.conn.commit()
+        self.cursor.execute('UPDATE users SET total_withdrawn = total_withdrawn + ? WHERE user_id = ?', (amount, user_id))
         self.conn.commit()
         return True
 
@@ -718,6 +780,19 @@ class Database:
             'total_games': total_games
         }
 
+    def cleanup_old_pending(self):
+        """Очистка старых pending заявок (старше 7 дней)"""
+        week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+        self.cursor.execute('''
+            UPDATE withdrawals SET status = 'expired' 
+            WHERE status = 'pending' AND created_at < ?
+        ''', (week_ago,))
+        self.cursor.execute('''
+            UPDATE nft_withdrawals SET status = 'expired' 
+            WHERE status = 'pending' AND created_at < ?
+        ''', (week_ago,))
+        self.conn.commit()
+
     def close(self):
         self.conn.close()
 
@@ -795,6 +870,7 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
 async def play_dice_game(query, context, user_id, user, emoji, multipliers):
     context.user_data['game_emoji'] = emoji
     context.user_data['game_multipliers'] = multipliers
+    context.user_data['game_start_time'] = time.time()
     text = f"{emoji} Игра\n\n💰 Баланс: {user[3]} ★\n\nВведите сумму ставки:"
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
     context.user_data['awaiting'] = 'dice_bet'
@@ -863,6 +939,137 @@ async def show_mines_field(update, context, game):
     else:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
 
+# ================== КЛАСС ДЛЯ ОБРАБОТКИ ПОПОЛНЕНИЙ ==================
+
+class DepositHandler:
+    @staticmethod
+    async def request_amount(update, context, user_id, method):
+        """Запрос суммы для пополнения"""
+        if method == 'stars':
+            text = ("⭐ *Пополнение Stars*\n\n"
+                   "Введите сумму пополнения в ⭐\n"
+                   "Минимальная сумма: 1 ⭐\n"
+                   "Максимальная сумма: 2500 ⭐\n\n"
+                   "Пример: `10`, `50`, `100`")
+        else:  # crypto
+            text = ("💎 *Пополнение CryptoBot*\n\n"
+                   "Введите сумму пополнения в рублях\n"
+                   "Минимальная сумма: 1.3 руб (1 ★)\n"
+                   f"Курс: 1 ★ = {RUB_PER_STAR} руб\n\n"
+                   "Пример: `13`, `65`, `130`")
+        
+        context.user_data['deposit_method'] = method
+        context.user_data['awaiting'] = f'deposit_amount_{method}'
+        
+        if isinstance(update, Update) and update.callback_query:
+            await update.callback_query.edit_message_text(
+                text, 
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=back_button("deposit_menu")
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=back_button("deposit_menu")
+            )
+    
+    @staticmethod
+    async def process_amount(update, context, user_id, text, method):
+        """Обработка введенной суммы"""
+        try:
+            # Заменяем запятую на точку для корректного парсинга
+            text = text.replace(',', '.')
+            
+            if method == 'stars':
+                amount = float(text)
+                # Проверка для Stars (целые числа)
+                if amount < 1:
+                    await update.message.reply_text("❌ Минимальная сумма: 1 ⭐")
+                    return False
+                if amount > 2500:
+                    await update.message.reply_text("❌ Максимальная сумма: 2500 ⭐")
+                    return False
+                if amount != int(amount):
+                    await update.message.reply_text("❌ Для Stars введите целое число")
+                    return False
+                
+                stars_amount = int(amount)
+                await DepositHandler.create_stars_invoice(update, context, user_id, stars_amount)
+                
+            else:  # crypto
+                rub_amount = float(text)
+                # Проверка для CryptoBot (можно дробные)
+                if rub_amount < 1.3:
+                    await update.message.reply_text(f"❌ Минимальная сумма: 1.3 руб")
+                    return False
+                if rub_amount > 3250:  # 2500 * 1.3
+                    await update.message.reply_text("❌ Максимальная сумма: 3250 руб")
+                    return False
+                
+                # Конвертируем рубли в звезды
+                stars_amount = int(rub_amount / RUB_PER_STAR)
+                if stars_amount < 1:
+                    stars_amount = 1
+                
+                await DepositHandler.create_crypto_invoice(update, context, user_id, stars_amount, rub_amount)
+            
+            return True
+            
+        except ValueError:
+            await update.message.reply_text("❌ Введите число (например: 10, 50.5, 100)")
+            return False
+    
+    @staticmethod
+    async def create_stars_invoice(update, context, user_id, amount):
+        """Создание счета в Stars"""
+        prices = [LabeledPrice(label="XTR", amount=amount)]
+        payload = f"stars_{user_id}_{amount}_{int(time.time())}"
+        
+        await context.bot.send_invoice(
+            chat_id=user_id,
+            title=f"Пополнение {BOT_NAME}",
+            description=f"Пополнение на {amount} ⭐",
+            payload=payload,
+            provider_token="",
+            currency="XTR",
+            prices=prices
+        )
+        
+        # Если это ответ на сообщение, удаляем клавиатуру
+        if update.message:
+            await update.message.reply_text("✅ Счет создан! Оплатите его в течение 10 минут.")
+    
+    @staticmethod
+    async def create_crypto_invoice(update, context, user_id, stars_amount, rub_amount):
+        """Создание счета в CryptoBot"""
+        invoice = crypto.create_invoice(
+            stars_amount, 
+            "TON", 
+            f"Пополнение {BOT_NAME} на {stars_amount} ★ ({rub_amount:.2f} руб)"
+        )
+        
+        if invoice:
+            db.add_payment(user_id, stars_amount, 'crypto', invoice['invoice_id'], 'pending')
+            
+            text = (f"💎 *Счет создан*\n\n"
+                   f"Сумма: {stars_amount} ★\n"
+                   f"К оплате: {rub_amount:.2f} руб\n\n"
+                   f"[💳 Перейти к оплате]({invoice['pay_url']})\n\n"
+                   f"Счет действителен 1 час")
+            
+            if update.message:
+                await update.message.reply_text(
+                    text,
+                    parse_mode=ParseMode.MARKDOWN,
+                    disable_web_page_preview=True,
+                    reply_markup=back_button("deposit_menu")
+                )
+        else:
+            error_text = "❌ Ошибка создания счета. Попробуйте позже."
+            if update.message:
+                await update.message.reply_text(error_text)
+
 # ================== СТАРТ ==================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -923,6 +1130,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user[11] == 1 and user_id not in ADMIN_IDS:
         await query.edit_message_text("❌ Вы заблокированы")
         return
+    
+    # Очистка старых игровых сессий (если прошло больше 10 минут)
+    if 'game_start_time' in context.user_data:
+        if time.time() - context.user_data['game_start_time'] > 600:  # 10 минут
+            context.user_data.clear()
+    
     data = query.data
 
     # ---------- ПРОФИЛЬ ----------
@@ -1018,17 +1231,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pos = int(data.replace("mines_open_", ""))
         game = context.user_data.get('mines_game')
         if not game:
-            await edit_message(query, "❌ Игра не найдена")
+            await edit_message(query, "❌ Игра не найдена или истекло время сессии")
             return
         res = game.open_cell(pos)
         if res['result'] == 'lose':
             db.add_lost_stars(user_id, game.bet)
             await edit_message(query, f"💥 БАБАХ!\n💰 Ставка {game.bet} ★ проиграна\n✨ +{int(game.bet*0.5)} ✨")
-            context.user_data.pop('mines_game')
+            context.user_data.pop('mines_game', None)
         elif res['result'] == 'win':
             db.update_balance(user_id, res['win'])
             await edit_message(query, f"🎉 ТЫ ВЫИГРАЛ ВСЁ ПОЛЕ!\n💰 Выигрыш: {res['win']} ★")
-            context.user_data.pop('mines_game')
+            context.user_data.pop('mines_game', None)
         elif res['result'] == 'continue':
             await show_mines_field(update, context, game)
         else:
@@ -1040,7 +1253,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             win = game.cashout()
             db.update_balance(user_id, win)
             await edit_message(query, f"💰 Забрал выигрыш\n💵 {win} ★")
-            context.user_data.pop('mines_game')
+            context.user_data.pop('mines_game', None)
         else:
             await edit_message(query, "❌ Игра не найдена")
 
@@ -1264,69 +1477,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- ПОПОЛНЕНИЕ ----------
     elif data == "deposit_menu":
-        text = (f"💰 Пополнение\n\n"
-                f"⭐ Stars — 1:1\n"
-                f"💎 CryptoBot — 1★ = 1.3 руб\n"
-                f"Минимум 10 ★")
+        text = (f"💰 *Пополнение*\n\n"
+                f"⭐ *Stars* — 1:1\n"
+                f"• Минимальная сумма: 1 ⭐\n"
+                f"• Максимальная сумма: 2500 ⭐\n"
+                f"• Мгновенное зачисление\n\n"
+                f"💎 *CryptoBot (TON)* — 1★ = {RUB_PER_STAR} руб\n"
+                f"• Минимальная сумма: 1.3 руб (1 ★)\n"
+                f"• Максимальная сумма: 3250 руб (2500 ★)\n"
+                f"• Зачисление после 1 подтверждения сети")
+        
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⭐ Stars", callback_data="deposit_stars_menu"),
-             InlineKeyboardButton("💎 CryptoBot", callback_data="deposit_crypto_menu")],
+            [InlineKeyboardButton("⭐ Stars", callback_data="deposit_stars"),
+             InlineKeyboardButton("💎 CryptoBot", callback_data="deposit_crypto")],
             [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
         await edit_message(query, text, kb)
 
-    elif data == "deposit_stars_menu":
-        text = "⭐ Выберите сумму:"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("10 ⭐", callback_data="stars_10"),
-             InlineKeyboardButton("25 ⭐", callback_data="stars_25"),
-             InlineKeyboardButton("50 ⭐", callback_data="stars_50")],
-            [InlineKeyboardButton("100 ⭐", callback_data="stars_100"),
-             InlineKeyboardButton("250 ⭐", callback_data="stars_250"),
-             InlineKeyboardButton("500 ⭐", callback_data="stars_500")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="deposit_menu")]
-        ])
-        await edit_message(query, text, kb)
+    elif data == "deposit_stars":
+        # Запрашиваем сумму для Stars
+        await DepositHandler.request_amount(update, context, user_id, 'stars')
 
-    elif data.startswith("stars_"):
-        amount = int(data.replace("stars_", ""))
-        prices = [LabeledPrice(label="XTR", amount=amount)]
-        payload = f"stars_{user_id}_{amount}_{int(time.time())}"
-        await context.bot.send_invoice(
-            chat_id=user_id,
-            title=f"Пополнение {BOT_NAME}",
-            description=f"Пополнение на {amount} ⭐",
-            payload=payload,
-            provider_token="",
-            currency="XTR",
-            prices=prices
-        )
-
-    elif data == "deposit_crypto_menu":
-        text = "💎 Выберите сумму в рублях:"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("13 руб (10 ★)", callback_data="crypto_10"),
-             InlineKeyboardButton("32.5 руб (25 ★)", callback_data="crypto_25"),
-             InlineKeyboardButton("65 руб (50 ★)", callback_data="crypto_50")],
-            [InlineKeyboardButton("130 руб (100 ★)", callback_data="crypto_100"),
-             InlineKeyboardButton("325 руб (250 ★)", callback_data="crypto_250"),
-             InlineKeyboardButton("650 руб (500 ★)", callback_data="crypto_500")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="deposit_menu")]
-        ])
-        await edit_message(query, text, kb)
-
-    elif data.startswith("crypto_"):
-        stars_amount = int(data.replace("crypto_", ""))
-        invoice = crypto.create_invoice(stars_amount, "TON", f"Пополнение {BOT_NAME} на {stars_amount} ★")
-        if invoice:
-            db.add_crypto_payment(user_id, stars_amount, invoice['invoice_id'])
-            await edit_message(
-                query,
-                f"💎 Счёт создан\n\n[Оплатить]({invoice['pay_url']})",
-                back_button("deposit_menu")
-            )
-        else:
-            await edit_message(query, "❌ Ошибка создания счёта")
+    elif data == "deposit_crypto":
+        # Запрашиваем сумму для CryptoBot
+        await DepositHandler.request_amount(update, context, user_id, 'crypto')
 
     # ---------- ВЫВОД ----------
     elif data == "withdraw_menu":
@@ -1673,34 +1847,66 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer(ok=True)
 
 async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    payment = update.message.successful_payment
-    payload = payment.invoice_payload
-    if payload.startswith("stars_"):
-        parts = payload.split('_')
-        uid = int(parts[1])
-        amt = int(parts[2])
-        db.confirm_stars_payment(payload)
-        await update.message.reply_text(f"✅ Зачислено {amt} ★")
-    elif payload.startswith("case_stars_"):
-        parts = payload.split('_')
-        uid = int(parts[2])
-        amt = int(parts[3])
-        res = db.open_case(1, uid)
-        if res:
-            if res['type'] == 'nft':
-                text = (f"🎉 Поздравляем!\n\nВы выиграли NFT: {res['name']} (стоимость {res['value']} ★).\n"
-                        f"NFT сохранён в инвентаре.")
-                kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📤 Вывести", callback_data=f"withdraw_nft_{res['name']}")],
-                    [InlineKeyboardButton("◀️ Назад", callback_data="case_menu")]
-                ])
-            else:
-                db.update_balance(uid, res['value'])
-                text = f"🎉 Поздравляем!\n\nВы выиграли: {res['name']}\n💰 {res['value']} ★ зачислено на баланс!"
-                kb = back_button("case_menu")
-            await update.message.reply_text(text, reply_markup=kb)
-        else:
-            await update.message.reply_text("❌ Ошибка открытия кейса")
+    try:
+        payment = update.message.successful_payment
+        payload = payment.invoice_payload
+        user_id = update.effective_user.id
+        
+        if payload.startswith("stars_"):
+            parts = payload.split('_')
+            if len(parts) >= 3:
+                uid = int(parts[1])
+                amt = int(parts[2])
+                if uid == user_id:
+                    if db.confirm_stars_payment(payload):
+                        # Формируем красивое сообщение
+                        new_balance = db.get_user(user_id)[3]
+                        text = (f"✅ *Пополнение успешно!*\n\n"
+                               f"Зачислено: {amt} ★\n"
+                               f"Новый баланс: {new_balance} ★")
+                        
+                        # Кнопки для дальнейших действий
+                        kb = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🎰 В казино", callback_data="casino_menu"),
+                             InlineKeyboardButton("📦 Открыть кейс", callback_data="case_menu")],
+                            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+                        ])
+                        
+                        await update.message.reply_text(
+                            text,
+                            parse_mode=ParseMode.MARKDOWN,
+                            reply_markup=kb
+                        )
+                    else:
+                        await update.message.reply_text("❌ Ошибка зачисления")
+                else:
+                    await update.message.reply_text("❌ Ошибка: несоответствие пользователя")
+        
+        elif payload.startswith("case_stars_"):
+            parts = payload.split('_')
+            if len(parts) >= 4:
+                uid = int(parts[2])
+                amt = int(parts[3])
+                if uid == user_id:
+                    res = db.open_case(1, uid)
+                    if res:
+                        if res['type'] == 'nft':
+                            text = (f"🎉 Поздравляем!\n\nВы выиграли NFT: {res['name']} "
+                                   f"(стоимость {res['value']} ★).\nNFT сохранён в инвентаре.")
+                            kb = InlineKeyboardMarkup([
+                                [InlineKeyboardButton("📤 Вывести", callback_data=f"withdraw_nft_{res['name']}")],
+                                [InlineKeyboardButton("◀️ Назад", callback_data="case_menu")]
+                            ])
+                        else:
+                            db.update_balance(uid, res['value'])
+                            text = f"🎉 Поздравляем!\n\nВы выиграли: {res['name']}\n💰 {res['value']} ★ зачислено на баланс!"
+                            kb = back_button("case_menu")
+                        await update.message.reply_text(text, reply_markup=kb)
+                    else:
+                        await update.message.reply_text("❌ Ошибка открытия кейса")
+    except Exception as e:
+        logger.error(f"Payment error: {e}")
+        await update.message.reply_text("❌ Ошибка обработки платежа")
 
 # ================== ОБРАБОТКА СООБЩЕНИЙ ==================
 
@@ -1708,7 +1914,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_ban(update, context):
         return
     user_id = update.effective_user.id
-    text = update.message.text
+    text = update.message.text if update.message.text else ""
 
     if user_id in ADMIN_IDS:
         if context.user_data.get('awaiting') == 'upload_welcome' and update.message.photo:
@@ -1727,6 +1933,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'awaiting' not in context.user_data:
         return
     state = context.user_data['awaiting']
+
+    # Обработка пополнений
+    if state == 'deposit_amount_stars' or state == 'deposit_amount_crypto':
+        method = state.replace('deposit_amount_', '')
+        success = await DepositHandler.process_amount(update, context, user_id, text, method)
+        if success:
+            context.user_data.pop('awaiting')
+            context.user_data.pop('deposit_method')
+        return
 
     if state == 'dice_bet':
         try:
@@ -1757,6 +1972,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.update_balance(user_id, -bet)
             game = MinesGame(bet, mines)
             context.user_data['mines_game'] = game
+            context.user_data['game_start_time'] = time.time()
             await show_mines_field(update, context, game)
             context.user_data.pop('awaiting')
             context.user_data.pop('mines_count')
@@ -1946,17 +2162,29 @@ def main():
     print("✅ История выводов в профиле")
     print("✅ Лотерея")
     print("✅ Статистика для админа")
+    print("✅ Произвольная сумма пополнения (от 1 ⭐)")
     print(f"✅ Твой ID {ADMIN_IDS[0]}")
     print("=" * 60)
 
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
-    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
-    print("🤖 Бот запущен!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        # Создаем приложение
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        
+        # Добавляем обработчики
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CallbackQueryHandler(button_handler))
+        application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+        application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
+        application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
+        
+        print("🤖 Бот запущен! Нажмите Ctrl+C для остановки.")
+        
+        # Запускаем бота
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        
+    except Exception as e:
+        logger.error(f"Ошибка запуска бота: {e}")
+        print(f"❌ Ошибка: {e}")
 
 if __name__ == "__main__":
     main()
