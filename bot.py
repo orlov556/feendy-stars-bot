@@ -1036,15 +1036,15 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
 
 # Коэффициенты для игр
 GAME_MULTIPLIERS = {
-    'flip': {1: 1.7, 2: 1.7},
-    'roulette': {1: 1.1, 2: 1.3, 3: 1.7, 4: 2.5, 5: 4.5, 6: 0},
+    'flip': {'1': 1.7, '2': 1.7},
+    'roulette': {'1': 1.1, '2': 1.3, '3': 1.7, '4': 2.5, '5': 4.5, '6': 0},
     'dice_num': 4.7,
     'dice_even_odd': 1.7,
     'slots': {1: 1.4, 2: 1.5, 3: 5.0},
-    'football': {4: 1.2, 5: 1.0, 6: 1.8},
-    'basketball': {4: 1.4, 5: 1.0, 6: 1.6},
-    'darts': {6: 1.95, 'any': 1.05},
-    'bowling': {5: 1.9, 6: 1.0, 'any': 1.05}
+    'football': {'goal': 1.2, 'miss': 0},
+    'basketball': {'point': 1.4, 'three': 1.6, 'miss': 0},
+    'darts': {'bullseye': 1.95, 'miss': 0},
+    'bowling': {'strike': 1.9, 'miss': 0}
 }
 
 # ---------- ОРЁЛ И РЕШКА ----------
@@ -1054,11 +1054,11 @@ async def play_flip(update, context, user_id):
     
     text = (f"🪙 *Орёл и Решка*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"Выберите ставку (x1.7):")
+            f"**Выбери на что ставишь:**")
     
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🦅 Орёл", callback_data="flip_choice_1"),
-         InlineKeyboardButton("🪙 Решка", callback_data="flip_choice_2")],
+        [InlineKeyboardButton("🦅 Орёл (x1.7)", callback_data="flip_choice_1"),
+         InlineKeyboardButton("🪙 Решка (x1.7)", callback_data="flip_choice_2")],
         [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     
@@ -1071,21 +1071,21 @@ async def play_roulette(update, context, user_id):
     
     text = (f"💀 *Русская рулетка*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"Выберите количество патронов:\n"
-            f"1️⃣ - x1.1\n"
-            f"2️⃣ - x1.3\n"
-            f"3️⃣ - x1.7\n"
-            f"4️⃣ - x2.5\n"
-            f"5️⃣ - x4.5\n"
-            f"6️⃣ - 💀")
+            f"**Выбери сколько патронов зарядить:**\n"
+            f"• 1 патрон - x1.1\n"
+            f"• 2 патрона - x1.3\n"
+            f"• 3 патрона - x1.7\n"
+            f"• 4 патрона - x2.5\n"
+            f"• 5 патронов - x4.5\n"
+            f"• 6 патронов - 💀")
     
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("1️⃣", callback_data="roulette_choice_1"),
-         InlineKeyboardButton("2️⃣", callback_data="roulette_choice_2"),
-         InlineKeyboardButton("3️⃣", callback_data="roulette_choice_3")],
-        [InlineKeyboardButton("4️⃣", callback_data="roulette_choice_4"),
-         InlineKeyboardButton("5️⃣", callback_data="roulette_choice_5"),
-         InlineKeyboardButton("6️⃣💀", callback_data="roulette_choice_6")],
+        [InlineKeyboardButton("1️⃣ (x1.1)", callback_data="roulette_choice_1"),
+         InlineKeyboardButton("2️⃣ (x1.3)", callback_data="roulette_choice_2"),
+         InlineKeyboardButton("3️⃣ (x1.7)", callback_data="roulette_choice_3")],
+        [InlineKeyboardButton("4️⃣ (x2.5)", callback_data="roulette_choice_4"),
+         InlineKeyboardButton("5️⃣ (x4.5)", callback_data="roulette_choice_5"),
+         InlineKeyboardButton("6️⃣ (💀)", callback_data="roulette_choice_6")],
         [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     
@@ -1098,11 +1098,11 @@ async def play_dice(update, context, user_id):
     
     text = (f"🎲 *Кости*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"Выберите режим игры:")
+            f"**Выбери режим игры:**")
     
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎲 На число (x4.7)", callback_data="dice_number_menu")],
-        [InlineKeyboardButton("🔴 Чёт / Нечёт (x1.7)", callback_data="dice_even_odd_menu")],
+        [InlineKeyboardButton("🔢 На число (x4.7)", callback_data="dice_number_menu")],
+        [InlineKeyboardButton("🟥 Чёт / Нечёт (x1.7)", callback_data="dice_even_odd_menu")],
         [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     
@@ -1114,7 +1114,7 @@ async def play_dice_number(update, context, user_id):
     
     text = (f"🎲 *Кости - Ставка на число*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"Выберите число (все x4.7):")
+            f"**Выбери число (все x4.7):**")
     
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("1️⃣", callback_data="dice_num_1"),
@@ -1134,7 +1134,7 @@ async def play_dice_even_odd(update, context, user_id):
     
     text = (f"🎲 *Кости - Чёт/Нечёт*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"Выберите ставку (x1.7):")
+            f"**Выбери ставку (x1.7):**")
     
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Чётное", callback_data="dice_even"),
@@ -1151,11 +1151,11 @@ async def play_slots(update, context, user_id):
     
     text = (f"🎰 *Слоты*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"🎰 Правила:\n"
-            f"• 1 одинаковый - x1.4\n"
-            f"• 2 одинаковых - x1.5\n"
-            f"• 3 одинаковых - x5.0\n\n"
-            f"Нажмите кнопку чтобы крутить!")
+            f"🎰 **Правила:**\n"
+            f"• 7️⃣7️⃣7️⃣ - x5.0\n"
+            f"• 🍒🍒 - x1.5\n"
+            f"• 🍒 - x1.4\n\n"
+            f"Нажми кнопку чтобы крутить!")
     
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎰 Крутить слоты", callback_data="slots_spin")],
@@ -1171,16 +1171,15 @@ async def play_football(update, context, user_id):
     
     text = (f"⚽ *Футбол*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"⚽ Правила:\n"
-            f"• Гол - x1.2\n"
-            f"• Голевая передача - x1.8\n"
-            f"• Мимо - x1.0\n\n"
-            f"Введите сумму ставки (мин. 1 ★):")
+            f"**Выбери на что ставишь:**")
     
-    context.user_data['game_type'] = 'football'
-    context.user_data['game_emoji'] = '⚽'
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
-    context.user_data['awaiting'] = 'dice_bet'
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚽ ГОЛ (x1.2)", callback_data="football_goal"),
+         InlineKeyboardButton("💨 МИМО", callback_data="football_miss")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
+    ])
+    
+    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
 # ---------- БАСКЕТБОЛ ----------
 async def play_basketball(update, context, user_id):
@@ -1189,16 +1188,16 @@ async def play_basketball(update, context, user_id):
     
     text = (f"🏀 *Баскетбол*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"🏀 Правила:\n"
-            f"• Очко - x1.4\n"
-            f"• Трёхочковый - x1.6\n"
-            f"• Мимо - x1.0\n\n"
-            f"Введите сумму ставки (мин. 1 ★):")
+            f"**Выбери на что ставишь:**")
     
-    context.user_data['game_type'] = 'basketball'
-    context.user_data['game_emoji'] = '🏀'
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
-    context.user_data['awaiting'] = 'dice_bet'
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏀 ОЧКО (x1.4)", callback_data="basketball_point"),
+         InlineKeyboardButton("🎯 ТРЁХА (x1.6)", callback_data="basketball_three")],
+        [InlineKeyboardButton("💨 МИМО", callback_data="basketball_miss"),
+         InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
+    ])
+    
+    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
 # ---------- ДАРТС ----------
 async def play_darts(update, context, user_id):
@@ -1207,15 +1206,15 @@ async def play_darts(update, context, user_id):
     
     text = (f"🎯 *Дартс*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"🎯 Правила:\n"
-            f"• В яблочко - x1.95\n"
-            f"• Мимо - x1.05\n\n"
-            f"Введите сумму ставки (мин. 1 ★):")
+            f"**Выбери на что ставишь:**")
     
-    context.user_data['game_type'] = 'darts'
-    context.user_data['game_emoji'] = '🎯'
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
-    context.user_data['awaiting'] = 'dice_bet'
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎯 В ЯБЛОЧКО (x1.95)", callback_data="darts_bullseye"),
+         InlineKeyboardButton("💨 МИМО", callback_data="darts_miss")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
+    ])
+    
+    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
 # ---------- БОУЛИНГ ----------
 async def play_bowling(update, context, user_id):
@@ -1224,22 +1223,22 @@ async def play_bowling(update, context, user_id):
     
     text = (f"🎳 *Боулинг*\n\n"
             f"💰 Баланс: {user[3]} ★\n\n"
-            f"🎳 Правила:\n"
-            f"• Страйк - x1.9\n"
-            f"• Сбил несколько - x1.05\n"
-            f"• Мимо - x1.0\n\n"
-            f"Введите сумму ставки (мин. 1 ★):")
+            f"**Выбери на что ставишь:**")
     
-    context.user_data['game_type'] = 'bowling'
-    context.user_data['game_emoji'] = '🎳'
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
-    context.user_data['awaiting'] = 'dice_bet'
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎳 СТРАЙК (x1.9)", callback_data="bowling_strike"),
+         InlineKeyboardButton("💨 МИМО", callback_data="bowling_miss")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
+    ])
+    
+    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
-# ---------- ОБРАБОТКА ВЫБОРА ----------
+# ================== ОБРАБОТКА ВЫБОРА ==================
+
 async def handle_game_choice(update, context, user_id, data):
     query = update.callback_query
     
-    # Орёл и Решка
+    # ---------- Орёл и Решка ----------
     if data.startswith('flip_choice_'):
         choice = data.replace('flip_choice_', '')
         context.user_data['game_type'] = 'flip'
@@ -1248,13 +1247,13 @@ async def handle_game_choice(update, context, user_id, data):
         
         user = db.get_user(user_id)
         text = (f"🪙 *Орёл и Решка*\n\n"
-                f"Ваш выбор: {'Орёл' if choice == '1' else 'Решка'}\n"
+                f"Твой выбор: {'🦅 Орёл' if choice == '1' else '🪙 Решка'}\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
-                f"Введите сумму ставки (мин. 1 ★):")
+                f"**Введите сумму ставки (мин. 1 ★):**")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
     
-    # Русская рулетка
+    # ---------- Русская рулетка ----------
     elif data.startswith('roulette_choice_'):
         choice = data.replace('roulette_choice_', '')
         context.user_data['game_type'] = 'roulette'
@@ -1262,15 +1261,17 @@ async def handle_game_choice(update, context, user_id, data):
         context.user_data['game_emoji'] = '💀'
         
         user = db.get_user(user_id)
-        mult = GAME_MULTIPLIERS['roulette'].get(int(choice), 0)
+        multipliers = {'1':1.1, '2':1.3, '3':1.7, '4':2.5, '5':4.5, '6':0}
+        mult = multipliers.get(choice, 0)
+        
         text = (f"💀 *Русская рулетка*\n\n"
-                f"Патронов: {choice} (x{mult})\n"
+                f"Патронов: {choice} (x{mult if mult>0 else '💀'})\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
-                f"Введите сумму ставки (мин. 1 ★):")
+                f"**Введите сумму ставки (мин. 1 ★):**")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
     
-    # Кости - число
+    # ---------- Кости - число ----------
     elif data.startswith('dice_num_'):
         num = data.replace('dice_num_', '')
         context.user_data['game_type'] = 'dice_num'
@@ -1280,11 +1281,11 @@ async def handle_game_choice(update, context, user_id, data):
         user = db.get_user(user_id)
         text = (f"🎲 *Кости - число {num}*\n\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
-                f"Введите сумму ставки (x4.7 если выпадет {num}):")
+                f"**Введите сумму ставки (x4.7 если выпадет {num}):**")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
     
-    # Кости - чётное
+    # ---------- Кости - чётное ----------
     elif data == 'dice_even':
         context.user_data['game_type'] = 'dice_even_odd'
         context.user_data['game_choice'] = 'even'
@@ -1293,11 +1294,11 @@ async def handle_game_choice(update, context, user_id, data):
         user = db.get_user(user_id)
         text = (f"🎲 *Кости - Чётное*\n\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
-                f"Введите сумму ставки (x1.7 если выпадет чётное):")
+                f"**Введите сумму ставки (x1.7 если выпадет чётное):**")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
     
-    # Кости - нечётное
+    # ---------- Кости - нечётное ----------
     elif data == 'dice_odd':
         context.user_data['game_type'] = 'dice_even_odd'
         context.user_data['game_choice'] = 'odd'
@@ -1306,11 +1307,11 @@ async def handle_game_choice(update, context, user_id, data):
         user = db.get_user(user_id)
         text = (f"🎲 *Кости - Нечётное*\n\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
-                f"Введите сумму ставки (x1.7 если выпадет нечётное):")
+                f"**Введите сумму ставки (x1.7 если выпадет нечётное):**")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
     
-    # Слоты
+    # ---------- Слоты ----------
     elif data == 'slots_spin':
         context.user_data['game_type'] = 'slots'
         context.user_data['game_choice'] = None
@@ -1319,11 +1320,124 @@ async def handle_game_choice(update, context, user_id, data):
         user = db.get_user(user_id)
         text = (f"🎰 *Слоты*\n\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
-                f"Введите сумму ставки (мин. 1 ★):")
+                f"**Введите сумму ставки (мин. 1 ★):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    # ---------- Футбол ----------
+    elif data == 'football_goal':
+        context.user_data['game_type'] = 'football'
+        context.user_data['game_choice'] = 'goal'
+        context.user_data['game_emoji'] = '⚽'
+        
+        user = db.get_user(user_id)
+        text = (f"⚽ *Футбол - ГОЛ*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (x1.2 если будет гол):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    elif data == 'football_miss':
+        context.user_data['game_type'] = 'football'
+        context.user_data['game_choice'] = 'miss'
+        context.user_data['game_emoji'] = '⚽'
+        
+        user = db.get_user(user_id)
+        text = (f"⚽ *Футбол - МИМО*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (если мимо - проигрыш):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    # ---------- Баскетбол ----------
+    elif data == 'basketball_point':
+        context.user_data['game_type'] = 'basketball'
+        context.user_data['game_choice'] = 'point'
+        context.user_data['game_emoji'] = '🏀'
+        
+        user = db.get_user(user_id)
+        text = (f"🏀 *Баскетбол - ОЧКО*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (x1.4 если будет очко):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    elif data == 'basketball_three':
+        context.user_data['game_type'] = 'basketball'
+        context.user_data['game_choice'] = 'three'
+        context.user_data['game_emoji'] = '🏀'
+        
+        user = db.get_user(user_id)
+        text = (f"🏀 *Баскетбол - ТРЁХА*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (x1.6 если будет трёха):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    elif data == 'basketball_miss':
+        context.user_data['game_type'] = 'basketball'
+        context.user_data['game_choice'] = 'miss'
+        context.user_data['game_emoji'] = '🏀'
+        
+        user = db.get_user(user_id)
+        text = (f"🏀 *Баскетбол - МИМО*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (если мимо - проигрыш):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    # ---------- Дартс ----------
+    elif data == 'darts_bullseye':
+        context.user_data['game_type'] = 'darts'
+        context.user_data['game_choice'] = 'bullseye'
+        context.user_data['game_emoji'] = '🎯'
+        
+        user = db.get_user(user_id)
+        text = (f"🎯 *Дартс - В ЯБЛОЧКО*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (x1.95 если попадёшь в яблочко):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    elif data == 'darts_miss':
+        context.user_data['game_type'] = 'darts'
+        context.user_data['game_choice'] = 'miss'
+        context.user_data['game_emoji'] = '🎯'
+        
+        user = db.get_user(user_id)
+        text = (f"🎯 *Дартс - МИМО*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (если мимо - проигрыш):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    # ---------- Боулинг ----------
+    elif data == 'bowling_strike':
+        context.user_data['game_type'] = 'bowling'
+        context.user_data['game_choice'] = 'strike'
+        context.user_data['game_emoji'] = '🎳'
+        
+        user = db.get_user(user_id)
+        text = (f"🎳 *Боулинг - СТРАЙК*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (x1.9 если страйк):**")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    elif data == 'bowling_miss':
+        context.user_data['game_type'] = 'bowling'
+        context.user_data['game_choice'] = 'miss'
+        context.user_data['game_emoji'] = '🎳'
+        
+        user = db.get_user(user_id)
+        text = (f"🎳 *Боулинг - МИМО*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"**Введите сумму ставки (если мимо - проигрыш):**")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
 
-# ---------- ОБРАБОТКА СТАВКИ ----------
+# ================== ОБРАБОТКА СТАВКИ ==================
+
 async def handle_dice_bet(update, context, user_id, bet):
     emoji = context.user_data.get('game_emoji')
     
@@ -1338,7 +1452,8 @@ async def handle_dice_bet(update, context, user_id, bet):
         game_data={'bet': bet}
     )
 
-# ---------- ОБРАБОТКА РЕЗУЛЬТАТА ----------
+# ================== ОБРАБОТКА РЕЗУЛЬТАТА ==================
+
 async def process_game_result(update, context, user_id, bet, game_type, game_choice, emoji):
     query = update.callback_query
     user = db.get_user(user_id)
@@ -1351,134 +1466,116 @@ async def process_game_result(update, context, user_id, bet, game_type, game_cho
     multiplier = 0
     result_text = ""
     
-    # Орёл и Решка
+    # ---------- Орёл и Решка ----------
     if game_type == 'flip':
         if str(res) == game_choice:
             multiplier = 1.7
             win = int(bet * multiplier)
-            result_text = f"🎉 Вы угадали! Выпал {'Орёл' if res == 1 else 'Решка'}"
+            result_text = f"🎉 Ты угадал! Выпал {'Орёл' if res == 1 else 'Решка'}"
         else:
-            result_text = f"😢 Не угадали. Выпал {'Орёл' if res == 1 else 'Решка'}"
+            result_text = f"😢 Не угадал. Выпал {'Орёл' if res == 1 else 'Решка'}"
     
-    # Русская рулетка
+    # ---------- Русская рулетка ----------
     elif game_type == 'roulette':
         choice_num = int(game_choice)
         if res <= choice_num:
             result_text = f"💥 БАХ! Патрон был в позиции {res}"
         else:
-            multiplier = GAME_MULTIPLIERS['roulette'][choice_num]
+            multipliers = {'1':1.1, '2':1.3, '3':1.7, '4':2.5, '5':4.5}
+            multiplier = multipliers.get(game_choice, 0)
             win = int(bet * multiplier)
-            result_text = f"🎉 Вы выжили! Выпал номер {res}"
+            result_text = f"🎉 Ты выжил! Выпал номер {res}"
     
-    # Кости - число
+    # ---------- Кости - число ----------
     elif game_type == 'dice_num':
         if str(res) == game_choice:
             multiplier = 4.7
             win = int(bet * multiplier)
             result_text = f"🎉 Точное попадание! Выпало {res}"
         else:
-            result_text = f"😢 Не угадали. Выпало {res}"
+            result_text = f"😢 Не угадал. Выпало {res}"
     
-    # Кости - чёт/нечёт
+    # ---------- Кости - чёт/нечёт ----------
     elif game_type == 'dice_even_odd':
         is_even = res % 2 == 0
         if (game_choice == 'even' and is_even) or (game_choice == 'odd' and not is_even):
             multiplier = 1.7
             win = int(bet * multiplier)
-            result_text = f"🎉 Угадали! Выпало {'чётное' if is_even else 'нечётное'} число {res}"
+            result_text = f"🎉 Угадал! Выпало {'чётное' if is_even else 'нечётное'} число {res}"
         else:
-            result_text = f"😢 Не угадали. Выпало {'чётное' if is_even else 'нечётное'} число {res}"
+            result_text = f"😢 Не угадал. Выпало {'чётное' if is_even else 'нечётное'} число {res}"
     
-    # Слоты
+    # ---------- Слоты ----------
     elif game_type == 'slots':
-        if res == 64:
+        if res == 64:  # Три одинаковых
             multiplier = 5.0
             win = int(bet * multiplier)
             result_text = "🎰 ДЖЕКПОТ! Три одинаковых!"
-        elif res == 43 or res == 22:
+        elif res == 43 or res == 22:  # Два одинаковых
             multiplier = 1.5
             win = int(bet * multiplier)
             result_text = "🎰 Два одинаковых! x1.5"
-        else:
+        else:  # Один
             multiplier = 1.4
             win = int(bet * multiplier)
             result_text = "🎰 Один совпал! x1.4"
     
-    # Футбол
+    # ---------- Футбол ----------
     elif game_type == 'football':
-        if res == 4:
+        if game_choice == 'goal' and res == 4:
             multiplier = 1.2
             win = int(bet * multiplier)
-            result_text = "⚽ ГОЛ! x1.2"
-        elif res == 6:
-            multiplier = 1.8
-            win = int(bet * multiplier)
-            result_text = "⚽ Голевая передача! x1.8"
+            result_text = "⚽ ГОЛ! Ты выиграл!"
         else:
-            multiplier = 1.0
-            win = bet
-            result_text = "⚽ Мимо ворот"
+            result_text = "😢 Проигрыш"
     
-    # Баскетбол
+    # ---------- Баскетбол ----------
     elif game_type == 'basketball':
-        if res == 4:
+        if game_choice == 'point' and res == 4:
             multiplier = 1.4
             win = int(bet * multiplier)
-            result_text = "🏀 Очко! x1.4"
-        elif res == 6:
+            result_text = "🏀 ОЧКО! Ты выиграл!"
+        elif game_choice == 'three' and res == 6:
             multiplier = 1.6
             win = int(bet * multiplier)
-            result_text = "🏀 Трёхочковый! x1.6"
+            result_text = "🏀 ТРЁХА! Ты выиграл!"
         else:
-            multiplier = 1.0
-            win = bet
-            result_text = "🏀 Мимо кольца"
+            result_text = "😢 Проигрыш"
     
-    # Дартс
+    # ---------- Дартс ----------
     elif game_type == 'darts':
-        if res == 6:
+        if game_choice == 'bullseye' and res == 6:
             multiplier = 1.95
             win = int(bet * multiplier)
-            result_text = "🎯 В ЯБЛОЧКО! x1.95"
+            result_text = "🎯 В ЯБЛОЧКО! Ты выиграл!"
         else:
-            multiplier = 1.05
-            win = int(bet * multiplier)
-            result_text = f"🎯 Попали в {res}"
+            result_text = "😢 Проигрыш"
     
-    # Боулинг
+    # ---------- Боулинг ----------
     elif game_type == 'bowling':
-        if res == 5:
+        if game_choice == 'strike' and res == 5:
             multiplier = 1.9
             win = int(bet * multiplier)
-            result_text = "🎳 СТРАЙК! x1.9"
-        elif res == 6:
-            multiplier = 1.0
-            win = bet
-            result_text = "🎳 Мимо"
+            result_text = "🎳 СТРАЙК! Ты выиграл!"
         else:
-            multiplier = 1.05
-            win = int(bet * multiplier)
-            result_text = f"🎳 Сбили {res} кеглей"
+            result_text = "😢 Проигрыш"
     
     # Обновляем баланс
-    if win > bet:
-        db.update_balance(user_id, win - bet)
+    if win > 0:
+        db.update_balance(user_id, win)
         new_balance = user[3] - bet + win
-    else:
-        db.add_lost_stars(user_id, bet)
-        new_balance = user[3] - bet + win
-    
-    # Формируем результат
-    if win > bet:
         text = (f"🎉 *ВЫИГРАЛ!*\n\n"
                f"{result_text}\n\n"
                f"💰 Ставка: {bet} ★\n"
                f"💵 Выигрыш: {win} ★ (x{multiplier})\n"
                f"💳 Баланс: {new_balance} ★")
     else:
+        db.add_lost_stars(user_id, bet)
+        new_balance = user[3] - bet
         text = (f"😢 *ПРОИГРЫШ*\n\n"
                f"{result_text}\n\n"
-               f"💰 Ставка: {bet} ★\n"
+               f"💰 Ставка: {bet} ★ сгорела\n"
+               f"✨ Снежинки: +{int(bet*0.5)} ✨\n"
                f"💳 Баланс: {new_balance} ★")
     
     # Кнопки после игры
@@ -1836,7 +1933,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- ОБРАБОТКА ВЫБОРА ----------
     elif data.startswith("flip_choice_") or data.startswith("roulette_choice_") or \
-         data.startswith("dice_num_") or data in ["dice_even", "dice_odd", "slots_spin"]:
+         data.startswith("dice_num_") or data in ["dice_even", "dice_odd", "slots_spin"] or \
+         data in ["football_goal", "football_miss", "basketball_point", "basketball_three", 
+                  "basketball_miss", "darts_bullseye", "darts_miss", "bowling_strike", "bowling_miss"]:
         await handle_game_choice(update, context, user_id, data)
 
     # ---------- МИННОЕ ПОЛЕ ----------
@@ -2942,7 +3041,8 @@ def main():
     print("✅ Произвольная сумма пополнения (от 1 ⭐)")
     print("✅ Минимальная ставка в казино 1 ★")
     print("✅ Кнопки после игры: Играть еще, В казино, Главное меню")
-    print("✅ Выбор в играх: Орёл/Решка, Чёт/Нечет, Числа")
+    print("✅ Выбор в играх: Орёл/Решка, Чёт/Нечет, Числа, Гол/Мимо, Очко/Трёха/Мимо, Яблочко/Мимо, Страйк/Мимо")
+    print("✅ При проигрыше ставка сгорает (возврата нет)")
     print("✅ Коэффициенты в пользу казино")
     print("✅ Правила (длинный текст)")
     print(f"✅ Твой ID {ADMIN_IDS[0]}")
