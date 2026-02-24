@@ -111,7 +111,7 @@ class Database:
         self._init_admin()
         self._load_images()
         self._init_promocodes()
-        self._init_shop()
+        self._init_shop()  # зимний магазин теперь в БД
 
     def _create_tables(self):
         # Пользователи
@@ -140,6 +140,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 item_name TEXT,
+                item_type TEXT,
                 item_value INTEGER,
                 source TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -240,14 +241,14 @@ class Database:
         self.cursor.execute('SELECT COUNT(*) FROM cases')
         if self.cursor.fetchone()[0] == 0:
             case_items = [
-                {'name': '❤️ Сердце', 'chance': 60, 'value': 15},
-                {'name': '🌹 Роза', 'chance': 17, 'value': 25},
-                {'name': '🚀 Ракета', 'chance': 7, 'value': 50},
-                {'name': '🌸 Цветы', 'chance': 7, 'value': 50},
-                {'name': '💍 Кольцо', 'chance': 3, 'value': 100},
-                {'name': '💎 Алмаз', 'chance': 1.5, 'value': 100},
-                {'name': '🍭 Lol pop', 'chance': 1, 'value': 325},
-                {'name': '🐕 Snoop Dogg', 'chance': 1, 'value': 425}
+                {'name': '❤️ Сердце', 'chance': 60, 'value': 15, 'type': 'gift'},
+                {'name': '🌹 Роза', 'chance': 17, 'value': 25, 'type': 'gift'},
+                {'name': '🚀 Ракета', 'chance': 7, 'value': 50, 'type': 'gift'},
+                {'name': '🌸 Цветы', 'chance': 7, 'value': 50, 'type': 'gift'},
+                {'name': '💍 Кольцо', 'chance': 3, 'value': 100, 'type': 'gift'},
+                {'name': '💎 Алмаз', 'chance': 1.5, 'value': 100, 'type': 'gift'},
+                {'name': '🎭 Люлом', 'chance': 1, 'value': 325, 'type': 'nft'},
+                {'name': '🐕 Chyn Dogg', 'chance': 1, 'value': 425, 'type': 'nft'}
             ]
             self.cursor.execute(
                 'INSERT INTO cases (name, price, items) VALUES (?, ?, ?)',
@@ -377,11 +378,11 @@ class Database:
         for item in items:
             cur += item['chance']
             if r <= cur:
-                if item['value'] in (325, 425):  # NFT
+                if item['type'] == 'nft':
                     self.cursor.execute('''
-                        INSERT INTO inventory (user_id, item_name, item_value, source)
-                        VALUES (?, ?, ?, 'case')
-                    ''', (user_id, item['name'], item['value']))
+                        INSERT INTO inventory (user_id, item_name, item_type, item_value, source)
+                        VALUES (?, ?, ?, ?, 'case')
+                    ''', (user_id, item['name'], item['type'], item['value']))
                     self.conn.commit()
                 return item
         return None
@@ -465,11 +466,13 @@ class Database:
         return self.cursor.fetchall()
 
     def approve_withdrawal(self, withdrawal_id, admin_id):
-        self.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ? AND status = ?', (withdrawal_id, 'pending'))
-        row = self.cursor.fetchone()
-        if not row:
+        self.cursor.execute('''
+            SELECT user_id, amount FROM withdrawals WHERE id = ? AND status = 'pending'
+        ''', (withdrawal_id,))
+        w = self.cursor.fetchone()
+        if not w:
             return False
-        user_id, amount = row
+        user_id, amount = w
         user = self.get_user(user_id)
         if user[3] < amount:
             return False
@@ -577,8 +580,7 @@ class Database:
         return self.cursor.fetchone()
 
     def activate_promocode(self, user_id, code):
-        self.cursor.execute('SELECT * FROM promocodes WHERE code = ?', (code,))
-        promo = self.cursor.fetchone()
+        promo = self.get_promocode_info(code)
         if not promo:
             return {'success': False, 'reason': '❌ Код не найден'}
         if promo[3] and datetime.now().date() > datetime.strptime(promo[3], '%Y-%m-%d').date():
@@ -806,7 +808,7 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
 
-# ================== ИГРЫ (DICE) ==================
+# ================== ИГРЫ НА DICE ==================
 
 async def play_dice_game(query, context, user_id, user, emoji, multipliers):
     context.user_data['game_emoji'] = emoji
@@ -905,7 +907,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu")],
         [InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo"),
          InlineKeyboardButton("📦 Инвентарь", callback_data="inventory")],
-        [InlineKeyboardButton("🎟️ Лотерея", callback_data="lottery")]  # НОВАЯ КНОПКА
+        [InlineKeyboardButton("🎟️ Лотерея", callback_data="lottery")]
     ]
     if user_id in ADMIN_IDS:
         kb.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
@@ -979,10 +981,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🎰 Слоты", callback_data="game_slots"),
              InlineKeyboardButton("💣 Минное поле", callback_data="game_mines")],
             [InlineKeyboardButton("🎲 Кости", callback_data="game_dice_classic"),
-             InlineKeyboardButton("⚽ Футбол", callback_data="game_football")],  # НОВОЕ
+             InlineKeyboardButton("⚽ Футбол", callback_data="game_football")],
             [InlineKeyboardButton("🏀 Баскетбол", callback_data="game_basketball"),
-             InlineKeyboardButton("🎯 Дартс", callback_data="game_darts")],      # НОВОЕ
-            [InlineKeyboardButton("🎳 Боулинг", callback_data="game_bowling")],   # НОВОЕ
+             InlineKeyboardButton("🎯 Дартс", callback_data="game_darts")],
+            [InlineKeyboardButton("🎳 Боулинг", callback_data="game_bowling")],
             back_button("main_menu")
         ]
         await edit_message(query, text, InlineKeyboardMarkup(kb))
@@ -996,13 +998,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await play_dice_game(query, context, user_id, user, '🎰', {22:1.5,43:1.5,64:5.0})
     elif data == "game_dice_classic":
         await play_dice_game(query, context, user_id, user, '🎲', {1:4.75,2:4.75,3:4.75,4:4.75,5:4.75,6:4.75})
-    elif data == "game_football":  # НОВОЕ
+    elif data == "game_football":
         await play_dice_game(query, context, user_id, user, '⚽', {4:1.4,5:1.6,6:2.0})
-    elif data == "game_basketball":  # НОВОЕ
+    elif data == "game_basketball":
         await play_dice_game(query, context, user_id, user, '🏀', {4:1.4,5:1.6,6:2.0})
-    elif data == "game_darts":  # НОВОЕ
+    elif data == "game_darts":
         await play_dice_game(query, context, user_id, user, '🎯', {6:5.0})
-    elif data == "game_bowling":  # НОВОЕ
+    elif data == "game_bowling":
         await play_dice_game(query, context, user_id, user, '🎳', {5:2.0,6:3.0})
 
     # ---------- МИННОЕ ПОЛЕ ----------
@@ -1085,8 +1087,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- КЕЙС ----------
     elif data == "case_menu":
-        cases = db.get_cases()
-        case = cases[0]
+        case = db.get_cases()[0]
         text = (f"📦 *Кейс {BOT_NAME}*\n\n"
                 f"💰 Цена: {case[2]} ★\n\n"
                 f"**Шансы:**\n"
@@ -1096,8 +1097,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🌸 Цветы (7%) — 50 ★\n"
                 f"💍 Кольцо (3%) — 100 ★\n"
                 f"💎 Алмаз (1.5%) — 100 ★\n"
-                f"🍭 Lol pop (1%) — 325 ★ (NFT)\n"
-                f"🐕 Snoop Dogg (1%) — 425 ★ (NFT)")
+                f"🎭 Люлом (1%) — 325 ★ (NFT)\n"
+                f"🐕 Chyn Dogg (1%) — 425 ★ (NFT)")
         kb = [
             [InlineKeyboardButton(f"📦 Открыть за {case[2]} ★ (баланс)", callback_data="open_case_balance")],
             [InlineKeyboardButton(f"⭐ Открыть за {case[2]} ⭐ (Stars)", callback_data="open_case_stars")],
@@ -1125,7 +1126,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.update_balance(user_id, -case_price)
         res = db.open_case(1, user_id)
         if res:
-            if res['value'] in (325, 425):
+            if res['type'] == 'nft':
                 text = (f"🎉 *Поздравляем!*\n\nВы выиграли NFT: **{res['name']}** (стоимость {res['value']} ★).\n"
                         f"NFT сохранён в инвентаре.")
                 kb = [[InlineKeyboardButton("📤 Вывести", callback_data=f"withdraw_nft_{res['name']}")],
@@ -1169,14 +1170,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("withdraw_nft_"):
         nft_name = data.replace("withdraw_nft_", "")
+        # найдём цену в кейсе
         cases = db.get_cases()
         items = json.loads(cases[0][3])
         price = None
         for it in items:
-            if it['name'] == nft_name and it['value'] in (325,425):
+            if it['name'] == nft_name and it['type'] == 'nft':
                 price = it['value']
                 break
         if not price:
+            # возможно из зимнего магазина
             shop = db.get_shop_items()
             for it in shop:
                 if it[0] == nft_name:
@@ -1263,7 +1266,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['awaiting'] = 'promocode'
         await edit_message(query, "🎟️ *Введите промокод:*")
 
-    # ---------- ЛОТЕРЕЯ (НОВОЕ) ----------
+    # ---------- ЛОТЕРЕЯ ----------
     elif data == "lottery":
         text = (f"🎟️ *ЛОТЕРЕЯ*\n\n"
                 f"📭 Пока нет активных лотерей\n\n"
@@ -1412,14 +1415,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔨 Баны", callback_data="admin_bans")],
             [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
             [InlineKeyboardButton("🖼️ Картинки", callback_data="admin_images")],
-            [InlineKeyboardButton("📊 Статистика за день", callback_data="admin_stats_daily")],   # НОВОЕ
-            [InlineKeyboardButton("📊 Статистика за неделю", callback_data="admin_stats_weekly")], # НОВОЕ
-            [InlineKeyboardButton("📊 Статистика за месяц", callback_data="admin_stats_monthly")], # НОВОЕ
+            [InlineKeyboardButton("📊 Статистика за день", callback_data="admin_stats_daily")],
+            [InlineKeyboardButton("📊 Статистика за неделю", callback_data="admin_stats_weekly")],
+            [InlineKeyboardButton("📊 Статистика за месяц", callback_data="admin_stats_monthly")],
             back_button("main_menu")
         ]
         await edit_message(query, text, InlineKeyboardMarkup(kb))
 
-    # ---------- СТАТИСТИКА (НОВОЕ) ----------
+    # ---------- СТАТИСТИКА ----------
     elif data == "admin_stats_daily":
         if user_id not in ADMIN_IDS:
             return
@@ -1497,7 +1500,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (wid,))
             uid, amt = db.cursor.fetchone()
             await context.bot.send_message(uid, f"✅ *Заявка на вывод одобрена!*\n💰 {amt} ★\n⏳ Ожидайте выдачи.")
-            # НОВАЯ КНОПКА "ВЫДАНО"
             kb = [[InlineKeyboardButton(f"✅ Выдано #{wid}", callback_data=f"complete_withdrawal_{wid}")]]
             await edit_message(query, f"✅ Заявка #{wid} одобрена. После выдачи нажмите кнопку.", InlineKeyboardMarkup(kb))
         else:
@@ -1693,7 +1695,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         amt = int(parts[3])
         res = db.open_case(1, uid)
         if res:
-            if res['value'] in (325,425):
+            if res['type'] == 'nft':
                 text = (f"🎉 *Поздравляем!*\n\nВы выиграли NFT: **{res['name']}** (стоимость {res['value']} ★).\n"
                         f"NFT сохранён в инвентаре.")
                 kb = [[InlineKeyboardButton("📤 Вывести", callback_data=f"withdraw_nft_{res['name']}")],
