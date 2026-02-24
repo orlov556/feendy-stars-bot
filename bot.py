@@ -9,10 +9,12 @@ import time
 import string
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Callable
-from contextlib import suppress
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery, InputMediaPhoto
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, PreCheckoutQueryHandler
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, 
+    ContextTypes, MessageHandler, filters, PreCheckoutQueryHandler
+)
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
@@ -1594,7 +1596,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎮 Сыграно игр: {s['games']}\n"
                 f"🏆 Самая популярная: {s['popular']}\n\n"
                 f"💰 Пополнения: {s['deposits']} ★\n"
-                f"💸 Выводы: {s['withdrawals']} ★\n"
+                f"💸 Выводы: {s['withdrawals']} ★\n
                 f"📊 Чистая прибыль: {s['profit']} ★")
         await edit_message(query, text, back_button("admin_panel"))
 
@@ -2150,7 +2152,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("=" * 60)
-    print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ)")
+    print(f"🚀 ЗАПУСК {BOT_NAME} (ВЕРСИЯ 20.7)")
     print("=" * 60)
     print("✅ Все игры с анимациями")
     print("✅ Минное поле (полноценное)")
@@ -2178,6 +2180,7 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
         
         print("🤖 Бот запущен! Нажмите Ctrl+C для остановки.")
+        print("📦 python-telegram-bot version: 20.7")
         
         # Запускаем бота
         application.run_polling(allowed_updates=Update.ALL_TYPES)
@@ -2185,6 +2188,9 @@ def main():
     except Exception as e:
         logger.error(f"Ошибка запуска бота: {e}")
         print(f"❌ Ошибка: {e}")
+        print("\n🔧 Установите версию 20.7:")
+        print("pip uninstall python-telegram-bot -y")
+        print("pip install python-telegram-bot==20.7")
 
 if __name__ == "__main__":
     main()
