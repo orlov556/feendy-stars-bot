@@ -9,6 +9,8 @@ import time
 import string
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Callable
+import signal
+import sys
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery, InputMediaPhoto
 from telegram.ext import (
@@ -927,6 +929,15 @@ class Database:
 
 db = Database()
 
+# Обработка сигналов для корректной остановки
+def signal_handler(sig, frame):
+    print('🛑 Получен сигнал остановки. Закрываем соединения...')
+    db.close()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 async def edit_message(query, text, keyboard=None):
     """Улучшенная функция редактирования сообщений"""
     try:
@@ -1082,6 +1093,9 @@ async def show_bet_options(update, context, user_id, game_type, game_emoji):
     """Показать варианты ставок для игры"""
     user = db.get_user(user_id)
     
+    # Получаем query из update
+    query = update.callback_query
+    
     if game_type == 'flip':
         text = (f"🪙 *Орёл и Решка*\n\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
@@ -1089,6 +1103,31 @@ async def show_bet_options(update, context, user_id, game_type, game_emoji):
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("🦅 Орёл (x1.9)", callback_data="bet_choice_flip_1"),
              InlineKeyboardButton("🪙 Решка (x1.9)", callback_data="bet_choice_flip_2")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
+        ])
+    
+    elif game_type == 'roulette':
+        text = (f"💀 *Русская рулетка*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"Выберите номер патрона (x2.5 если выживете):")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("1️⃣", callback_data="bet_choice_roulette_1"),
+             InlineKeyboardButton("2️⃣", callback_data="bet_choice_roulette_2"),
+             InlineKeyboardButton("3️⃣", callback_data="bet_choice_roulette_3")],
+            [InlineKeyboardButton("4️⃣", callback_data="bet_choice_roulette_4"),
+             InlineKeyboardButton("5️⃣", callback_data="bet_choice_roulette_5"),
+             InlineKeyboardButton("6️⃣", callback_data="bet_choice_roulette_6")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
+        ])
+    
+    elif game_type == 'slots':
+        text = (f"🎰 *Слоты*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"🎰 Джекпот: 7️⃣7️⃣7️⃣ (x50)\n"
+                f"🍒 Вишня: 3️⃣🍒 (x1.5)\n"
+                f"💎 Бриллиант: 💎💎 (x5)")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎰 Крутить слоты", callback_data="bet_choice_slots")],
             [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
         ])
     
@@ -1137,31 +1176,6 @@ async def show_bet_options(update, context, user_id, game_type, game_emoji):
             [InlineKeyboardButton("◀️ Назад", callback_data="game_dice_classic")]
         ])
     
-    elif game_type == 'roulette':
-        text = (f"💀 *Русская рулетка*\n\n"
-                f"💰 Баланс: {user[3]} ★\n\n"
-                f"Выберите номер патрона (x2.5 если выживете):")
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("1️⃣", callback_data="bet_choice_roulette_1"),
-             InlineKeyboardButton("2️⃣", callback_data="bet_choice_roulette_2"),
-             InlineKeyboardButton("3️⃣", callback_data="bet_choice_roulette_3")],
-            [InlineKeyboardButton("4️⃣", callback_data="bet_choice_roulette_4"),
-             InlineKeyboardButton("5️⃣", callback_data="bet_choice_roulette_5"),
-             InlineKeyboardButton("6️⃣", callback_data="bet_choice_roulette_6")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
-        ])
-    
-    elif game_type == 'slots':
-        text = (f"🎰 *Слоты*\n\n"
-                f"💰 Баланс: {user[3]} ★\n\n"
-                f"🎰 Джекпот: 7️⃣7️⃣7️⃣ (x50)\n"
-                f"🍒 Вишня: 3️⃣🍒 (x1.5)\n"
-                f"💎 Бриллиант: 💎💎 (x5)")
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎰 Крутить слоты", callback_data="bet_choice_slots")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
-        ])
-    
     else:
         # Для остальных игр без выбора
         game_names = {
@@ -1181,10 +1195,12 @@ async def show_bet_options(update, context, user_id, game_type, game_emoji):
         context.user_data['awaiting'] = 'dice_bet'
         return
     
-    await edit_message(query, text, kb)
+    # Используем query для редактирования сообщения
+    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
 async def handle_bet_choice(update, context, user_id, data):
     """Обработка выбора ставки"""
+    query = update.callback_query
     parts = data.split('_')
     # bet_choice_flip_1
     # bet_choice_dice_even
@@ -1230,25 +1246,37 @@ async def handle_bet_choice(update, context, user_id, data):
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
     
-    elif game_type == 'dice':
-        if choice == 'even':
-            context.user_data['game_choice'] = 'even'
-        elif choice == 'odd':
-            context.user_data['game_choice'] = 'odd'
+    elif game_type == 'dice_even':
+        context.user_data['game_choice'] = 'even'
         context.user_data['game_emoji'] = '🎲'
-        text = (f"🎲 *Кости - {'Чёт' if choice == 'even' else 'Нечёт'}*\n\n"
+        text = (f"🎲 *Кости - Чётное*\n\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
                 f"Введите сумму ставки (мин. 1 ★):")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'dice_bet'
     
-    elif game_type == 'dice':
-        if choice == 'high':
-            context.user_data['game_choice'] = 'high'
-        elif choice == 'low':
-            context.user_data['game_choice'] = 'low'
+    elif game_type == 'dice_odd':
+        context.user_data['game_choice'] = 'odd'
         context.user_data['game_emoji'] = '🎲'
-        text = (f"🎲 *Кости - {'Больше 3' if choice == 'high' else 'Меньше 4'}*\n\n"
+        text = (f"🎲 *Кости - Нечётное*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"Введите сумму ставки (мин. 1 ★):")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    elif game_type == 'dice_high':
+        context.user_data['game_choice'] = 'high'
+        context.user_data['game_emoji'] = '🎲'
+        text = (f"🎲 *Кости - Больше 3*\n\n"
+                f"💰 Баланс: {user[3]} ★\n\n"
+                f"Введите сумму ставки (мин. 1 ★):")
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
+    
+    elif game_type == 'dice_low':
+        context.user_data['game_choice'] = 'low'
+        context.user_data['game_emoji'] = '🎲'
+        text = (f"🎲 *Кости - Меньше 4*\n\n"
                 f"💰 Баланс: {user[3]} ★\n\n"
                 f"Введите сумму ставки (мин. 1 ★):")
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
@@ -1784,7 +1812,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     result_text = f"😢 Не угадали. Выпало {res}"
             
-            elif game_type == 'dice_even_odd':
+            elif game_type == 'dice_even_odd' or game_choice in ['even', 'odd']:
                 # Чёт/Нечёт
                 is_even = res % 2 == 0
                 if (game_choice == 'even' and is_even) or (game_choice == 'odd' and not is_even):
@@ -1794,7 +1822,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     result_text = f"😢 Не угадали. Выпало {'чётное' if is_even else 'нечётное'} число {res}"
             
-            elif game_type == 'dice_high_low':
+            elif game_type == 'dice_high_low' or game_choice in ['high', 'low']:
                 # Больше/Меньше
                 is_high = res >= 4
                 if (game_choice == 'high' and is_high) or (game_choice == 'low' and not is_high):
@@ -1891,8 +1919,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                        f"💳 Баланс: {new_balance} ★")
             
             # Кнопки после игры
+            # Определяем базовый тип игры для кнопки "Играть еще"
+            base_game = game_type
+            if game_type in ['dice_num', 'dice_even_odd', 'dice_high_low']:
+                base_game = 'dice'
+            
             kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎮 Играть еще", callback_data=f"game_{game_type}"),
+                [InlineKeyboardButton("🎮 Играть еще", callback_data=f"game_{base_game}"),
                  InlineKeyboardButton("🎰 В казино", callback_data="casino_menu")],
                 [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
             ])
@@ -2915,7 +2948,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("=" * 60)
-    print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ)")
+    print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ ДЛЯ RAILWAY)")
     print("=" * 60)
     print("✅ Все игры с анимациями")
     print("✅ Минное поле (полноценное)")
@@ -2931,8 +2964,14 @@ def main():
     print("✅ Статистика для админа")
     print("✅ Произвольная сумма пополнения (от 1 ⭐)")
     print("✅ Минимальная ставка в казино 1 ★")
-    print("✅ Кнопки после игры")
+    print("✅ Кнопки после игры: Играть еще, В казино, Главное меню")
+    print("✅ Выбор в играх: Орёл/Решка, Чёт/Нечет, Больше/Меньше, Числа")
+    print("✅ Коэффициенты в пользу казино")
+    print("✅ Правила (длинный текст)")
     print(f"✅ Твой ID {ADMIN_IDS[0]}")
+    print("=" * 60)
+    print("📦 База данных сохраняется в /app/data/")
+    print("🔧 Используйте переменные окружения для токенов")
     print("=" * 60)
 
     try:
