@@ -1930,6 +1930,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     failed += 1
         await update.message.reply_text(f"✅ Отправлено: {sent}\n❌ Ошибок: {failed}")
 
+# ================== ЗАПУСК ==================
+
 def main():
     print("=" * 60)
     print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ)")
