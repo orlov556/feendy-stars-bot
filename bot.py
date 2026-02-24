@@ -804,19 +804,26 @@ class Database:
 db = Database()
 
 async def edit_message(query, text, keyboard=None):
+    """Улучшенная функция редактирования сообщений"""
     try:
         if query.message.photo:
+            # Если это фото, отправляем новое сообщение
             if keyboard:
-                await query.edit_message_caption(caption=text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+                await query.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
             else:
-                await query.edit_message_caption(caption=text, parse_mode=ParseMode.MARKDOWN)
+                await query.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+            # Убираем клавиатуру у фото
+            await query.edit_message_reply_markup(reply_markup=None)
         else:
+            # Если текстовое сообщение, редактируем
             if keyboard:
                 await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
             else:
                 await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        return True
     except Exception as e:
         logger.error(f"Edit error: {e}")
+        return False
 
 async def check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -838,18 +845,35 @@ def home_button():
 # ================== УМНАЯ ПРОВЕРКА БАЛАНСА ==================
 
 async def check_balance_and_offer(update, context, user_id, required_amount, action_callback, success_message, game_data=None):
+    """Проверка баланса и предложение подтвердить ставку"""
     user = db.get_user(user_id)
+    if not user:
+        if isinstance(update, Update) and update.message:
+            await update.message.reply_text("❌ Пользователь не найден")
+        return
+        
     balance = user[3]
+    
     if balance >= required_amount:
         if game_data:
             context.user_data['game_data'] = game_data
         context.user_data['pending_action'] = action_callback
         text = f"{success_message}\n\n💰 С баланса спишется {required_amount} ★."
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подтвердить", callback_data=action_callback)]])
-        if isinstance(update, Update) and update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=kb)
-        else:
-            await update.message.reply_text(text, reply_markup=kb)
+        
+        try:
+            if isinstance(update, Update):
+                if update.callback_query:
+                    await update.callback_query.edit_message_text(text, reply_markup=kb)
+                elif update.message:
+                    await update.message.reply_text(text, reply_markup=kb)
+            else:
+                await update.message.reply_text(text, reply_markup=kb)
+        except Exception as e:
+            logger.error(f"Ошибка в check_balance_and_offer: {e}")
+            # Если не удалось отредактировать, отправляем новое сообщение
+            if isinstance(update, Update) and update.message:
+                await update.message.reply_text(text, reply_markup=kb)
     else:
         missing = required_amount - balance
         text = (f"❌ Недостаточно средств!\n\n"
@@ -862,27 +886,57 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
             [InlineKeyboardButton("⭐ Оплатить Stars", callback_data=f"pay_stars_{required_amount}_{action_callback}")],
             [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
-        if isinstance(update, Update) and update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=kb)
-        else:
-            await update.message.reply_text(text, reply_markup=kb)
+        
+        try:
+            if isinstance(update, Update):
+                if update.callback_query:
+                    await update.callback_query.edit_message_text(text, reply_markup=kb)
+                elif update.message:
+                    await update.message.reply_text(text, reply_markup=kb)
+            else:
+                await update.message.reply_text(text, reply_markup=kb)
+        except Exception as e:
+            logger.error(f"Ошибка в check_balance_and_offer (недостаточно средств): {e}")
+            if isinstance(update, Update) and update.message:
+                await update.message.reply_text(text, reply_markup=kb)
 
 # ================== ИГРЫ НА DICE ==================
 
 async def play_dice_game(query, context, user_id, user, emoji, multipliers):
+    """Запуск игры с анимированным эмодзи"""
     context.user_data['game_emoji'] = emoji
     context.user_data['game_multipliers'] = multipliers
     context.user_data['game_start_time'] = time.time()
-    text = f"{emoji} Игра\n\n💰 Баланс: {user[3]} ★\n\nВведите сумму ставки:"
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
-    context.user_data['awaiting'] = 'dice_bet'
+    text = f"{emoji} Игра\n\n💰 Баланс: {user[3]} ★\n\nВведите сумму ставки (мин. 1 ★):"
+    
+    try:
+        # Проверяем тип сообщения
+        if query.message.photo:
+            # Если сообщение с фото, отправляем новое текстовое сообщение
+            await query.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+            # Удаляем клавиатуру у фото, чтобы не было путаницы
+            await query.edit_message_reply_markup(reply_markup=None)
+        else:
+            # Если обычное текстовое сообщение, редактируем его
+            await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        
+        context.user_data['awaiting'] = 'dice_bet'
+        
+    except Exception as e:
+        logger.error(f"Ошибка в play_dice_game: {e}")
+        # Если не удалось отредактировать, отправляем новое сообщение
+        await query.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['awaiting'] = 'dice_bet'
 
 async def handle_dice_bet(update, context, user_id, bet):
+    """Обработка ставки для игры"""
     emoji = context.user_data.get('game_emoji')
     multipliers = context.user_data.get('game_multipliers')
+    
     if not emoji or not multipliers:
-        await update.message.reply_text("❌ Ошибка игры")
+        await update.message.reply_text("❌ Ошибка игры. Попробуйте снова.")
         return
+        
     await check_balance_and_offer(
         update, context, user_id, bet,
         action_callback=f"dice_confirm_{emoji}",
@@ -1225,7 +1279,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("mines_set_"):
         mines = int(data.replace("mines_set_", ""))
         context.user_data['mines_count'] = mines
-        text = f"💣 Минное поле\n\nМин: {mines}\n\nВведите сумму ставки:"
+        text = f"💣 Минное поле\n\nМин: {mines}\n\nВведите сумму ставки (мин. 1 ★):"
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
         context.user_data['awaiting'] = 'mines_bet'
 
@@ -1259,31 +1313,83 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await edit_message(query, "❌ Игра не найдена")
 
-    # ---------- ПОДТВЕРЖДЕНИЕ СТАВКИ ----------
+    # ---------- ПОДТВЕРЖДЕНИЕ СТАВКИ (ИСПРАВЛЕННАЯ ВЕРСИЯ) ----------
     elif data.startswith("dice_confirm_"):
         emoji = data.replace("dice_confirm_", "")
         game_data = context.user_data.get('game_data')
+        
         if not game_data:
-            await edit_message(query, "❌ Ошибка")
+            await edit_message(query, "❌ Ошибка. Начните игру заново.", back_button("casino_menu"))
             return
+            
         bet = game_data['bet']
         mult = game_data['multipliers']
-        if user[3] < bet:
-            await edit_message(query, "❌ Баланс изменился, попробуйте снова", home_button())
+        
+        # Проверяем баланс еще раз
+        user = db.get_user(user_id)
+        if not user or user[3] < bet:
+            await edit_message(query, "❌ Недостаточно средств. Пополните баланс.", home_button())
             return
+            
+        # Списываем ставку
         db.update_balance(user_id, -bet)
-        msg = await context.bot.send_dice(chat_id=user_id, emoji=emoji)
-        res = msg.dice.value
-        m = mult.get(res, 0)
-        if m > 0:
-            win = int(bet * m)
-            db.update_balance(user_id, win)
-            text = f"🎉 Выигрыш!\n\n💰 {win} ★ (x{m})"
-        else:
-            db.add_lost_stars(user_id, bet)
-            text = f"😢 Проигрыш\n\n💰 Ставка {bet} ★ проиграна\n✨ +{int(bet*0.5)} ✨"
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад в казино", callback_data="casino_menu")]])
-        await query.edit_message_text(text, reply_markup=kb)
+        
+        # Отправляем анимированную игру
+        try:
+            msg = await context.bot.send_dice(chat_id=user_id, emoji=emoji)
+            res = msg.dice.value
+            
+            # Определяем название игры
+            game_names = {
+                '🪙': 'Орёл и решка',
+                '💀': 'Русская рулетка',
+                '🎰': 'Слоты',
+                '🎲': 'Кости',
+                '⚽': 'Футбол',
+                '🏀': 'Баскетбол',
+                '🎯': 'Дартс',
+                '🎳': 'Боулинг'
+            }
+            game_name = game_names.get(emoji, 'Игра')
+            
+            # Проверяем выигрыш
+            m = mult.get(res, 0)
+            if m > 0:
+                win = int(bet * m)
+                db.update_balance(user_id, win)
+                new_balance = user[3] - bet + win
+                text = (f"🎉 *ВЫИГРЫШ!*\n\n"
+                       f"🎮 Игра: {game_name}\n"
+                       f"🎲 Результат: {res}\n"
+                       f"💵 Ставка: {bet} ★\n"
+                       f"💰 Выигрыш: {win} ★ (x{m})\n"
+                       f"💳 Текущий баланс: {new_balance} ★")
+            else:
+                db.add_lost_stars(user_id, bet)
+                new_balance = user[3] - bet
+                text = (f"😢 *ПРОИГРЫШ*\n\n"
+                       f"🎮 Игра: {game_name}\n"
+                       f"🎲 Результат: {res}\n"
+                       f"💵 Ставка: {bet} ★ проиграна\n"
+                       f"✨ Получено снежинок: +{int(bet*0.5)} ✨\n"
+                       f"💳 Текущий баланс: {new_balance} ★")
+            
+            # Кнопки после игры
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎮 Играть еще", callback_data=f"game_{emoji}"),
+                 InlineKeyboardButton("🎰 В казино", callback_data="casino_menu")],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+            ])
+            
+            await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при отправке игры: {e}")
+            # Возвращаем ставку в случае ошибки
+            db.update_balance(user_id, bet)
+            await edit_message(query, "❌ Ошибка при запуске игры. Попробуйте позже.", back_button("casino_menu"))
+        
+        # Очищаем данные игры
         context.user_data.pop('game_data', None)
 
     # ---------- КЕЙС ----------
@@ -1948,8 +2054,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == 'dice_bet':
         try:
             bet = int(text)
-            if bet < 10:
-                await update.message.reply_text("❌ Минимальная ставка 10 ★")
+            if bet < 1:
+                await update.message.reply_text("❌ Минимальная ставка 1 ★")
                 return
             user = db.get_user(user_id)
             if bet > user[3]:
@@ -1963,8 +2069,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == 'mines_bet':
         try:
             bet = int(text)
-            if bet < 10:
-                await update.message.reply_text("❌ Минимальная ставка 10 ★")
+            if bet < 1:
+                await update.message.reply_text("❌ Минимальная ставка 1 ★")
                 return
             user = db.get_user(user_id)
             if bet > user[3]:
@@ -2152,7 +2258,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("=" * 60)
-    print(f"🚀 ЗАПУСК {BOT_NAME} (ВЕРСИЯ 20.3)")
+    print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ)")
     print("=" * 60)
     print("✅ Все игры с анимациями")
     print("✅ Минное поле (полноценное)")
@@ -2165,6 +2271,8 @@ def main():
     print("✅ Лотерея")
     print("✅ Статистика для админа")
     print("✅ Произвольная сумма пополнения (от 1 ⭐)")
+    print("✅ Минимальная ставка в казино 1 ★")
+    print("✅ Кнопки после игры: Играть еще, В казино, Главное меню")
     print(f"✅ Твой ID {ADMIN_IDS[0]}")
     print("=" * 60)
 
@@ -2180,7 +2288,7 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
         
         print("🤖 Бот запущен! Нажмите Ctrl+C для остановки.")
-        print("📦 python-telegram-bot version: 20.3")
+        print("📦 python-telegram-bot version: 20.7")
         
         # Запускаем бота
         application.run_polling(allowed_updates=Update.ALL_TYPES)
@@ -2188,10 +2296,9 @@ def main():
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
         print(f"❌ Ошибка: {e}")
-        print("\n🔧 Установите версию 20.3:")
+        print("\n🔧 Установите версию 20.7:")
         print("pip uninstall python-telegram-bot -y")
-        print("pip install python-telegram-bot==20.3")
-        print("\n📝 Если вы на хостинге, попросите техподдержку установить эту версию")
+        print("pip install python-telegram-bot==20.7")
 
 if __name__ == "__main__":
     main()
