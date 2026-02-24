@@ -2152,7 +2152,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("=" * 60)
-    print(f"🚀 ЗАПУСК {BOT_NAME} (ВЕРСИЯ 20.7)")
+    print(f"🚀 ЗАПУСК {BOT_NAME} (ВЕРСИЯ 20.3)")
     print("=" * 60)
     print("✅ Все игры с анимациями")
     print("✅ Минное поле (полноценное)")
@@ -2180,17 +2180,18 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
         
         print("🤖 Бот запущен! Нажмите Ctrl+C для остановки.")
-        print("📦 python-telegram-bot version: 20.7")
+        print("📦 python-telegram-bot version: 20.3")
         
         # Запускаем бота
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
-        logger.error(f"Ошибка запуска бота: {e}")
+        logger.error(f"Ошибка при запуске бота: {e}")
         print(f"❌ Ошибка: {e}")
-        print("\n🔧 Установите версию 20.7:")
+        print("\n🔧 Установите версию 20.3:")
         print("pip uninstall python-telegram-bot -y")
-        print("pip install python-telegram-bot==20.7")
+        print("pip install python-telegram-bot==20.3")
+        print("\n📝 Если вы на хостинге, попросите техподдержку установить эту версию")
 
 if __name__ == "__main__":
     main()
