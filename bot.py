@@ -23,9 +23,9 @@ CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 ADMIN_IDS = [5697184715]  # ТВОЙ ID
 
 BOT_NAME = "FEENDY STARS"
-BOT_USERNAME = "FeendyStars_robot"  # для ссылок
+BOT_USERNAME = "FeendyStars_robot"
 
-# Глобальные переменные для картинок (загружаются из БД)
+# Глобальные переменные для картинок
 WELCOME_IMAGE_ID = None
 CASE_IMAGE_ID = None
 
@@ -99,7 +99,6 @@ crypto = CryptoBotAPI(CRYPTOBOT_API_KEY)
 
 class Database:
     def __init__(self):
-        # Путь к БД для Railway Volume
         db_path = os.environ.get("DB_PATH", "feendy_stars.db")
         if '/app/data' in db_path:
             try:
@@ -117,7 +116,6 @@ class Database:
         self._init_shop()
 
     def _create_tables(self):
-        # Пользователи
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -137,7 +135,6 @@ class Database:
                 total_lost INTEGER DEFAULT 0
             )
         ''')
-        # Инвентарь для NFT
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,7 +146,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Кейсы
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS cases (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,7 +154,6 @@ class Database:
                 items TEXT
             )
         ''')
-        # Заявки на вывод звёзд
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS withdrawals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,7 +168,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Заявки на вывод NFT
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS nft_withdrawals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,7 +181,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Промокоды
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS promocodes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +193,6 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Активации промокодов
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS promocode_uses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -209,7 +201,6 @@ class Database:
                 used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Платежи
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,14 +212,12 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Настройки
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
             )
         ''')
-        # Зимний магазин (товары)
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS shop (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -458,16 +447,6 @@ class Database:
         ''')
         return self.cursor.fetchall()
 
-    def get_approved_withdrawals(self):
-        self.cursor.execute('''
-            SELECT w.*, u.username, u.first_name
-            FROM withdrawals w
-            JOIN users u ON w.user_id = u.user_id
-            WHERE w.status = 'approved'
-            ORDER BY w.created_at ASC
-        ''')
-        return self.cursor.fetchall()
-
     def approve_withdrawal(self, withdrawal_id, admin_id):
         self.cursor.execute('''
             SELECT user_id, amount FROM withdrawals WHERE id = ? AND status = 'pending'
@@ -528,16 +507,6 @@ class Database:
             FROM nft_withdrawals w
             JOIN users u ON w.user_id = u.user_id
             WHERE w.status = 'pending'
-            ORDER BY w.created_at ASC
-        ''')
-        return self.cursor.fetchall()
-
-    def get_approved_nft_withdrawals(self):
-        self.cursor.execute('''
-            SELECT w.*, u.username, u.first_name
-            FROM nft_withdrawals w
-            JOIN users u ON w.user_id = u.user_id
-            WHERE w.status = 'approved'
             ORDER BY w.created_at ASC
         ''')
         return self.cursor.fetchall()
@@ -603,7 +572,7 @@ class Database:
         self.cursor.execute('SELECT * FROM promocodes ORDER BY created_at DESC')
         return self.cursor.fetchall()
 
-    # ================== СТАТИСТИКА ДЛЯ АДМИНА (НОВОЕ) ==================
+    # ================== СТАТИСТИКА ДЛЯ АДМИНА ==================
 
     def _get_most_popular_game(self, since):
         self.cursor.execute('''
@@ -774,11 +743,9 @@ async def check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return True
 
 def back_button(target='main_menu'):
-    """Возвращает корректную клавиатуру с одной кнопкой 'Назад'"""
     return InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=target)]])
 
 def home_button():
-    """Возвращает клавиатуру с кнопкой 'Главное меню'"""
     return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]])
 
 # ================== УМНАЯ ПРОВЕРКА БАЛАНСА ==================
@@ -901,7 +868,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     db.create_user(user_id, user.username, user.first_name, ref)
     u = db.get_user(user_id)
-    kb = InlineKeyboardMarkup([
+    
+    # Создаём клавиатуру правильно
+    keyboard_rows = [
         [InlineKeyboardButton("🎰 Казино", callback_data="casino_menu"),
          InlineKeyboardButton("📦 Кейс", callback_data="case_menu")],
         [InlineKeyboardButton("❄️ Зимний магазин", callback_data="winter_shop"),
@@ -913,9 +882,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo"),
          InlineKeyboardButton("📦 Инвентарь", callback_data="inventory")],
         [InlineKeyboardButton("🎟️ Лотерея", callback_data="lottery")]
-    ])
+    ]
     if user_id in ADMIN_IDS:
-        kb.inline_keyboard.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
+        keyboard_rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
+    
+    kb = InlineKeyboardMarkup(keyboard_rows)
+    
     text = (f"🌟 *{BOT_NAME}*\n\n"
             f"🆔 ID: {user_id}\n"
             f"👤 Имя: {user.first_name}\n"
@@ -1063,7 +1035,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await edit_message(query, "❌ Игра не найдена")
 
-    # ---------- ПОДТВЕРЖДЕНИЕ СТАВКИ (DICE) ----------
+    # ---------- ПОДТВЕРЖДЕНИЕ СТАВКИ ----------
     elif data.startswith("dice_confirm_"):
         emoji = data.replace("dice_confirm_", "")
         game_data = context.user_data.get('game_data')
@@ -1178,7 +1150,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("withdraw_nft_"):
         nft_name = data.replace("withdraw_nft_", "")
-        # найдём цену в кейсе
         cases = db.get_cases()
         items = json.loads(cases[0][3])
         price = None
@@ -1187,7 +1158,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 price = it['value']
                 break
         if not price:
-            # возможно из зимнего магазина
             shop = db.get_shop_items()
             for it in shop:
                 if it[0] == nft_name:
@@ -1668,7 +1638,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "main_menu":
         u = db.get_user(user_id)
-        kb = InlineKeyboardMarkup([
+        kb_rows = [
             [InlineKeyboardButton("🎰 Казино", callback_data="casino_menu"),
              InlineKeyboardButton("📦 Кейс", callback_data="case_menu")],
             [InlineKeyboardButton("❄️ Зимний магазин", callback_data="winter_shop"),
@@ -1680,9 +1650,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo"),
              InlineKeyboardButton("📦 Инвентарь", callback_data="inventory")],
             [InlineKeyboardButton("🎟️ Лотерея", callback_data="lottery")]
-        ])
+        ]
         if user_id in ADMIN_IDS:
-            kb.inline_keyboard.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
+            kb_rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
+        kb = InlineKeyboardMarkup(kb_rows)
         text = f"🌟 *{BOT_NAME}*\n\n🆔 ID: {user_id}\n💰 Баланс: {u[3]} ★\n❄️ Снежинки: {u[4]} ✨"
         await edit_message(query, text, kb)
 
@@ -1730,7 +1701,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
 
-    # Загрузка картинок для админов
     if user_id in ADMIN_IDS:
         if context.user_data.get('awaiting') == 'upload_welcome' and update.message.photo:
             file_id = update.message.photo[-1].file_id
@@ -1749,7 +1719,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     state = context.user_data['awaiting']
 
-    # Ставка для игр
     if state == 'dice_bet':
         try:
             bet = int(text)
@@ -1765,7 +1734,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Введите число")
         return
 
-    # Ставка для минного поля
     if state == 'mines_bet':
         try:
             bet = int(text)
@@ -1787,7 +1755,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Введите число")
         return
 
-    # Настройки вывода
     if state == 'telegram':
         db.update_telegram_username(user_id, text.strip().replace('@', ''))
         context.user_data.pop('awaiting')
@@ -1852,7 +1819,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("❌ Введите число")
 
-    # Причина отказа для звёзд
     elif state == 'reject_reason':
         if user_id not in ADMIN_IDS:
             return
@@ -1868,7 +1834,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('awaiting')
         context.user_data.pop('reject_id')
 
-    # Причина отказа для NFT
     elif state == 'reject_nft_reason':
         if user_id not in ADMIN_IDS:
             return
@@ -1884,7 +1849,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('awaiting')
         context.user_data.pop('reject_nft_id')
 
-    # Промокоды
     elif state == 'promocode':
         res = db.activate_promocode(user_id, text.upper().strip())
         if res['success']:
@@ -1929,7 +1893,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("❌ Введите число")
 
-    # Рассылка
     elif state == 'broadcast':
         if user_id not in ADMIN_IDS:
             return
@@ -1958,23 +1921,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     failed += 1
         await update.message.reply_text(f"✅ Отправлено: {sent}\n❌ Ошибок: {failed}")
 
-# ================== ЗАПУСК ==================
-
 def main():
     print("=" * 60)
     print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ)")
     print("=" * 60)
     print("✅ Все игры с анимациями")
     print("✅ Минное поле (полноценное)")
-    print("✅ Умная система пополнения (баланс/Stars)")
+    print("✅ Умная система пополнения")
     print("✅ Кейс с выбором оплаты")
     print("✅ Зимний магазин (только снежинки)")
     print("✅ Инвентарь и вывод NFT")
     print("✅ Вывод звёзд с кнопкой «Выдано»")
     print("✅ История выводов в профиле")
     print("✅ Лотерея")
-    print("✅ Статистика для админа (день/неделя/месяц)")
-    print("✅ Админ-панель")
+    print("✅ Статистика для админа")
     print(f"✅ Твой ID {ADMIN_IDS[0]}")
     print("=" * 60)
 
