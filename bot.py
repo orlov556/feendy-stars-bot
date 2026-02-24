@@ -111,7 +111,7 @@ class Database:
         self._init_admin()
         self._load_images()
         self._init_promocodes()
-        self._init_shop()  # зимний магазин теперь в БД
+        self._init_shop()
 
     def _create_tables(self):
         # Пользователи
@@ -962,7 +962,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"{emoji} {w[1]} ★ — {w[2]}\n"
         else:
             text += "Пока нет выводов"
-        await edit_message(query, text, InlineKeyboardMarkup(back_button()))
+        keyboard = back_button()
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
 
     # ---------- ПРАВИЛА ----------
     elif data == "rules":
@@ -970,7 +971,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🚫 Запрещено: боты, мультиаккаунты, обман.\n"
                 "✅ Разрешено: играть и выигрывать.\n"
                 "Нарушение → блокировка.")
-        await edit_message(query, text, InlineKeyboardMarkup(back_button()))
+        keyboard = back_button()
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
 
     # ---------- КАЗИНО ----------
     elif data == "casino_menu":
@@ -1032,38 +1034,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pos = int(data.replace("mines_open_", ""))
         game = context.user_data.get('mines_game')
         if not game:
-            await edit_message(query, "❌ Игра не найдена")
+            await edit_message(query, "❌ Игра не найдена", InlineKeyboardMarkup(back_button("casino_menu")))
             return
         res = game.open_cell(pos)
         if res['result'] == 'lose':
             db.add_lost_stars(user_id, game.bet)
-            await edit_message(query, f"💥 *БАБАХ!*\n💰 Ставка {game.bet} ★ проиграна\n✨ +{int(game.bet*0.5)} ✨")
+            await edit_message(query, f"💥 *БАБАХ!*\n💰 Ставка {game.bet} ★ проиграна\n✨ +{int(game.bet*0.5)} ✨", InlineKeyboardMarkup(back_button("casino_menu")))
             context.user_data.pop('mines_game')
         elif res['result'] == 'win':
             db.update_balance(user_id, res['win'])
-            await edit_message(query, f"🎉 *ТЫ ВЫИГРАЛ ВСЁ ПОЛЕ!*\n💰 Выигрыш: {res['win']} ★")
+            await edit_message(query, f"🎉 *ТЫ ВЫИГРАЛ ВСЁ ПОЛЕ!*\n💰 Выигрыш: {res['win']} ★", InlineKeyboardMarkup(back_button("casino_menu")))
             context.user_data.pop('mines_game')
         elif res['result'] == 'continue':
             await show_mines_field(update, context, game)
         else:
-            await edit_message(query, "❌ Неверный ход")
+            await edit_message(query, "❌ Неверный ход", InlineKeyboardMarkup(back_button("casino_menu")))
 
     elif data == "mines_cashout":
         game = context.user_data.get('mines_game')
         if game:
             win = game.cashout()
             db.update_balance(user_id, win)
-            await edit_message(query, f"💰 *Забрал выигрыш*\n💵 {win} ★")
+            await edit_message(query, f"💰 *Забрал выигрыш*\n💵 {win} ★", InlineKeyboardMarkup(back_button("casino_menu")))
             context.user_data.pop('mines_game')
         else:
-            await edit_message(query, "❌ Игра не найдена")
+            await edit_message(query, "❌ Игра не найдена", InlineKeyboardMarkup(back_button("casino_menu")))
 
     # ---------- ПОДТВЕРЖДЕНИЕ СТАВКИ (DICE) ----------
     elif data.startswith("dice_confirm_"):
         emoji = data.replace("dice_confirm_", "")
         game_data = context.user_data.get('game_data')
         if not game_data:
-            await edit_message(query, "❌ Ошибка")
+            await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("casino_menu")))
             return
         bet = game_data['bet']
         mult = game_data['multipliers']
@@ -1081,7 +1083,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             db.add_lost_stars(user_id, bet)
             text = f"😢 *Проигрыш*\n\n💰 Ставка {bet} ★ проиграна\n✨ +{int(bet*0.5)} ✨"
-        kb = [[InlineKeyboardButton("◀️ Назад в казино", callback_data="casino_menu")]]
+        kb = back_button("casino_menu")
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
         context.user_data.pop('game_data', None)
 
@@ -1137,7 +1139,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 kb = back_button("case_menu")
             await edit_message(query, text, InlineKeyboardMarkup(kb))
         else:
-            await edit_message(query, "❌ Ошибка открытия кейса")
+            await edit_message(query, "❌ Ошибка открытия кейса", InlineKeyboardMarkup(back_button("case_menu")))
 
     elif data == "open_case_stars":
         case_price = 35
@@ -1197,9 +1199,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🖼️ *Заявка на вывод NFT*\n\n👤 @{user[1] or user_id}\n🎁 {nft_name}\n💰 {price} ★\n🆔 #{wid}",
                     reply_markup=InlineKeyboardMarkup(kb)
                 )
-            await edit_message(query, f"✅ Заявка #{wid} отправлена на вывод.")
+            await edit_message(query, f"✅ Заявка #{wid} отправлена на вывод.", InlineKeyboardMarkup(back_button("inventory")))
         else:
-            await edit_message(query, "❌ NFT не найден")
+            await edit_message(query, "❌ NFT не найден", InlineKeyboardMarkup(back_button("inventory")))
 
     # ---------- ЗИМНИЙ МАГАЗИН ----------
     elif data == "winter_shop":
@@ -1223,7 +1225,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 price = p
                 break
         if not price:
-            await edit_message(query, "❌ Товар не найден")
+            await edit_message(query, "❌ Товар не найден", InlineKeyboardMarkup(back_button("winter_shop")))
             return
         if user[4] >= price:
             db.update_snowflakes(user_id, -price)
@@ -1238,7 +1240,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🖼️ *Новая покупка NFT*\n\n👤 @{user[1] or user_id}\n🎁 {item_name}\n❄️ {price} ✨\n🆔 #{wid}",
                     reply_markup=InlineKeyboardMarkup(kb)
                 )
-            await edit_message(query, f"✅ Куплено! Заявка #{wid} отправлена на вывод.")
+            await edit_message(query, f"✅ Куплено! Заявка #{wid} отправлена на вывод.", InlineKeyboardMarkup(back_button("winter_shop")))
         else:
             await edit_message(query, f"❌ Не хватает {price - user[4]} ✨", InlineKeyboardMarkup(back_button("winter_shop")))
 
@@ -1250,7 +1252,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Приглашено: {user[5]}\n"
                 f"Заработано: {user[5] * 5} ✨\n\n"
                 f"За каждого друга +5 ✨")
-        await edit_message(query, text, InlineKeyboardMarkup(back_button("main_menu")))
+        keyboard = back_button("main_menu")
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
 
     # ---------- БОНУС ----------
     elif data == "daily_bonus":
@@ -1259,7 +1262,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = f"🎁 +{bonus} ★"
         else:
             text = "❌ Бонус уже получен сегодня"
-        await edit_message(query, text, InlineKeyboardMarkup(home_button()))
+        keyboard = home_button()
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
 
     # ---------- ПРОМОКОД ----------
     elif data == "activate_promo":
@@ -1272,7 +1276,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📭 Пока нет активных лотерей\n\n"
                 f"Следите за новостями!\n"
                 f"👉 https://t.me/{BOT_USERNAME}")
-        await edit_message(query, text, InlineKeyboardMarkup(back_button("main_menu")))
+        keyboard = back_button("main_menu")
+        await edit_message(query, text, InlineKeyboardMarkup(keyboard))
 
     # ---------- ПОПОЛНЕНИЕ ----------
     elif data == "deposit_menu":
@@ -1338,7 +1343,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardMarkup(back_button("deposit_menu"))
             )
         else:
-            await edit_message(query, "❌ Ошибка создания счёта")
+            await edit_message(query, "❌ Ошибка создания счёта", InlineKeyboardMarkup(back_button("deposit_menu")))
 
     # ---------- ВЫВОД ----------
     elif data == "withdraw_menu":
@@ -1373,20 +1378,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "withdraw_telegram":
         if user[3] < 50:
-            await edit_message(query, "❌ Минимум 50 ★")
+            await edit_message(query, "❌ Минимум 50 ★", InlineKeyboardMarkup(back_button("withdraw_menu")))
             return
         if not user[9]:
-            await edit_message(query, "❌ Сначала укажите Telegram Username")
+            await edit_message(query, "❌ Сначала укажите Telegram Username", InlineKeyboardMarkup(back_button("withdraw_menu")))
             return
         context.user_data['awaiting'] = 'withdraw_telegram_amount'
         await edit_message(query, f"📱 Введите сумму для вывода (макс {user[3]} ★):")
 
     elif data == "withdraw_crypto":
         if user[3] < 50:
-            await edit_message(query, "❌ Минимум 50 ★")
+            await edit_message(query, "❌ Минимум 50 ★", InlineKeyboardMarkup(back_button("withdraw_menu")))
             return
         if not user[8]:
-            await edit_message(query, "❌ Сначала укажите CryptoBot ID")
+            await edit_message(query, "❌ Сначала укажите CryptoBot ID", InlineKeyboardMarkup(back_button("withdraw_menu")))
             return
         context.user_data['awaiting'] = 'withdraw_crypto_amount'
         await edit_message(query, f"💳 Введите сумму для вывода (макс {user[3]} ★):")
@@ -1394,7 +1399,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- АДМИН-ПАНЕЛЬ ----------
     elif data == "admin_panel":
         if user_id not in ADMIN_IDS:
-            await edit_message(query, "❌ Нет прав")
+            await edit_message(query, "❌ Нет прав", InlineKeyboardMarkup(back_button("main_menu")))
             return
         stats = db.get_total_stats()
         ps = len(db.get_pending_withdrawals())
@@ -1503,7 +1508,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = [[InlineKeyboardButton(f"✅ Выдано #{wid}", callback_data=f"complete_withdrawal_{wid}")]]
             await edit_message(query, f"✅ Заявка #{wid} одобрена. После выдачи нажмите кнопку.", InlineKeyboardMarkup(kb))
         else:
-            await edit_message(query, "❌ Ошибка")
+            await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("admin_panel")))
 
     elif data.startswith("complete_withdrawal_"):
         if user_id not in ADMIN_IDS:
@@ -1513,9 +1518,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (wid,))
             uid, amt = db.cursor.fetchone()
             await context.bot.send_message(uid, f"✅ *Вывод выполнен!*\n💰 {amt} ★ получены.")
-            await edit_message(query, f"✅ Заявка #{wid} завершена.")
+            await edit_message(query, f"✅ Заявка #{wid} завершена.", InlineKeyboardMarkup(back_button("admin_panel")))
         else:
-            await edit_message(query, "❌ Ошибка")
+            await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("admin_panel")))
 
     elif data.startswith("reject_withdrawal_"):
         if user_id not in ADMIN_IDS:
@@ -1554,7 +1559,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = [[InlineKeyboardButton(f"✅ Выдано #{wid}", callback_data=f"complete_nft_{wid}")]]
             await edit_message(query, f"✅ Заявка #{wid} одобрена.", InlineKeyboardMarkup(kb))
         else:
-            await edit_message(query, "❌ Ошибка")
+            await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("admin_panel")))
 
     elif data.startswith("complete_nft_"):
         if user_id not in ADMIN_IDS:
@@ -1564,9 +1569,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.cursor.execute('SELECT user_id, nft_name FROM nft_withdrawals WHERE id = ?', (wid,))
             uid, name = db.cursor.fetchone()
             await context.bot.send_message(uid, f"✅ *NFT выдан!*\n🎁 {name} получен.")
-            await edit_message(query, f"✅ Заявка #{wid} завершена.")
+            await edit_message(query, f"✅ Заявка #{wid} завершена.", InlineKeyboardMarkup(back_button("admin_panel")))
         else:
-            await edit_message(query, "❌ Ошибка")
+            await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("admin_panel")))
 
     elif data.startswith("reject_nft_"):
         if user_id not in ADMIN_IDS:
@@ -1616,9 +1621,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         bid = int(data.replace("unban_", ""))
         if db.unban_user(user_id, bid):
-            await edit_message(query, f"✅ Пользователь {bid} разбанен")
+            await edit_message(query, f"✅ Пользователь {bid} разбанен", InlineKeyboardMarkup(back_button("admin_panel")))
         else:
-            await edit_message(query, "❌ Ошибка")
+            await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("admin_panel")))
 
     elif data == "admin_broadcast":
         if user_id not in ADMIN_IDS:
