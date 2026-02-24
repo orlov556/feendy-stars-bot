@@ -1596,7 +1596,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎮 Сыграно игр: {s['games']}\n"
                 f"🏆 Самая популярная: {s['popular']}\n\n"
                 f"💰 Пополнения: {s['deposits']} ★\n"
-                f"💸 Выводы: {s['withdrawals']} ★\n
+                f"💸 Выводы: {s['withdrawals']} ★\n"
                 f"📊 Чистая прибыль: {s['profit']} ★")
         await edit_message(query, text, back_button("admin_panel"))
 
