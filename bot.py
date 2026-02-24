@@ -33,6 +33,9 @@ RUB_PER_STAR = 1.3
 RUB_PER_TON = 105
 TON_PER_STAR = RUB_PER_STAR / RUB_PER_TON
 
+# Используем HTML вместо Markdown (надёжнее)
+PARSE_MODE = ParseMode.HTML
+
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -600,7 +603,7 @@ class Database:
         self.cursor.execute('SELECT * FROM promocodes ORDER BY created_at DESC')
         return self.cursor.fetchall()
 
-    # ================== СТАТИСТИКА ДЛЯ АДМИНА (НОВОЕ) ==================
+    # ================== СТАТИСТИКА ДЛЯ АДМИНА ==================
 
     def _get_most_popular_game(self, since):
         self.cursor.execute('''
@@ -748,14 +751,14 @@ async def edit_message(query, text, keyboard=None):
     try:
         if query.message.photo:
             if keyboard:
-                await query.edit_message_caption(caption=text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+                await query.edit_message_caption(caption=text, parse_mode=PARSE_MODE, reply_markup=keyboard)
             else:
-                await query.edit_message_caption(caption=text, parse_mode=ParseMode.MARKDOWN)
+                await query.edit_message_caption(caption=text, parse_mode=PARSE_MODE)
         else:
             if keyboard:
-                await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+                await query.edit_message_text(text, parse_mode=PARSE_MODE, reply_markup=keyboard)
             else:
-                await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+                await query.edit_message_text(text, parse_mode=PARSE_MODE)
     except Exception as e:
         logger.error(f"Edit error: {e}")
 
@@ -776,7 +779,7 @@ def back_button(target='main_menu'):
 def home_button():
     return [[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]]
 
-# ================== УМНАЯ ПРОВЕРКА БАЛАНСА (НОВОЕ) ==================
+# ================== УМНАЯ ПРОВЕРКА БАЛАНСА ==================
 
 async def check_balance_and_offer(update, context, user_id, required_amount, action_callback, success_message, game_data=None):
     user = db.get_user(user_id)
@@ -788,12 +791,12 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
         text = f"{success_message}\n\n💰 С баланса спишется {required_amount} ★."
         kb = [[InlineKeyboardButton("✅ Подтвердить", callback_data=action_callback)]]
         if isinstance(update, Update) and update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=PARSE_MODE)
         else:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=PARSE_MODE)
     else:
         missing = required_amount - balance
-        text = (f"❌ *Недостаточно средств!*\n\n"
+        text = (f"❌ <b>Недостаточно средств!</b>\n\n"
                 f"Требуется: {required_amount} ★\n"
                 f"У вас: {balance} ★\n"
                 f"Не хватает: {missing} ★\n\n"
@@ -804,17 +807,17 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
             [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ]
         if isinstance(update, Update) and update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=PARSE_MODE)
         else:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=PARSE_MODE)
 
 # ================== ИГРЫ НА DICE ==================
 
 async def play_dice_game(query, context, user_id, user, emoji, multipliers):
     context.user_data['game_emoji'] = emoji
     context.user_data['game_multipliers'] = multipliers
-    text = f"{emoji} *Игра*\n\n💰 Баланс: {user[3]} ★\n\nВведите сумму ставки:"
-    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+    text = f"{emoji} <b>Игра</b>\n\n💰 Баланс: {user[3]} ★\n\nВведите сумму ставки:"
+    await query.edit_message_text(text, parse_mode=PARSE_MODE)
     context.user_data['awaiting'] = 'dice_bet'
 
 async def handle_dice_bet(update, context, user_id, bet):
@@ -826,7 +829,7 @@ async def handle_dice_bet(update, context, user_id, bet):
     await check_balance_and_offer(
         update, context, user_id, bet,
         action_callback=f"dice_confirm_{emoji}",
-        success_message=f"{emoji} *Подтверждение ставки*\n\nСтавка: {bet} ★",
+        success_message=f"{emoji} <b>Подтверждение ставки</b>\n\nСтавка: {bet} ★",
         game_data={'bet': bet, 'emoji': emoji, 'multipliers': multipliers}
     )
 
@@ -873,13 +876,13 @@ async def show_mines_field(update, context, game):
         kb.append(row)
     kb.append([InlineKeyboardButton("💰 Забрать", callback_data="mines_cashout")])
     kb.append([InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")])
-    text = (f"💣 *Минное поле*\n💰 Ставка: {game.bet} ★\n"
+    text = (f"💣 <b>Минное поле</b>\n💰 Ставка: {game.bet} ★\n"
             f"📈 Множитель: x{game.multiplier:.2f}\n"
             f"✅ Открыто: {len(game.opened)}/{25-game.mines_count}")
     if update.message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=PARSE_MODE)
     else:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=PARSE_MODE)
 
 # ================== СТАРТ ==================
 
@@ -911,17 +914,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     if user_id in ADMIN_IDS:
         kb.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
-    text = (f"🌟 *{BOT_NAME}*\n\n"
+    text = (f"🌟 <b>{BOT_NAME}</b>\n\n"
             f"🆔 ID: {user_id}\n"
             f"👤 Имя: {user.first_name}\n"
             f"💰 Баланс: {u[3]} ★\n"
             f"❄️ Снежинки: {u[4]} ✨")
     if WELCOME_IMAGE_ID:
         await update.message.reply_photo(photo=WELCOME_IMAGE_ID, caption=text,
-                                         parse_mode=ParseMode.MARKDOWN,
+                                         parse_mode=PARSE_MODE,
                                          reply_markup=InlineKeyboardMarkup(kb))
     else:
-        await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN,
+        await update.message.reply_text(text, parse_mode=PARSE_MODE,
                                         reply_markup=InlineKeyboardMarkup(kb))
 
 # ================== ОБРАБОТЧИК КНОПОК ==================
@@ -943,19 +946,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "profile":
         stats = db.get_user_stats(user_id)
         wd = db.get_user_withdrawals(user_id)
-        text = (f"👤 *Профиль*\n\n"
+        text = (f"👤 <b>Профиль</b>\n\n"
                 f"🆔 ID: {user_id}\n"
                 f"👤 Имя: {user[2]}\n"
                 f"📛 Username: @{user[1] or 'нет'}\n"
                 f"💰 Баланс: {user[3]} ★\n"
                 f"❄️ Снежинки: {user[4]} ✨\n"
                 f"👥 Рефералов: {user[5]}\n\n"
-                f"📊 *Статистика игр:*\n"
+                f"📊 <b>Статистика игр:</b>\n"
                 f"• Всего игр: {stats[0] or 0}\n"
                 f"• Выиграно: {stats[1] or 0}\n"
                 f"• Проиграно: {stats[2] or 0}\n"
                 f"• Сумма ставок: {stats[3] or 0} ★\n\n"
-                f"📋 *Последние выводы:*\n")
+                f"📋 <b>Последние выводы:</b>\n")
         if wd:
             for w in wd:
                 emoji = {"pending":"⏳","approved":"✅","completed":"✔️","rejected":"❌"}.get(w[3],"❓")
@@ -967,7 +970,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- ПРАВИЛА ----------
     elif data == "rules":
-        text = ("📜 *Правила*\n\n"
+        text = ("📜 <b>Правила</b>\n\n"
                 "🚫 Запрещено: боты, мультиаккаунты, обман.\n"
                 "✅ Разрешено: играть и выигрывать.\n"
                 "Нарушение → блокировка.")
@@ -976,7 +979,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- КАЗИНО ----------
     elif data == "casino_menu":
-        text = "🎰 *Казино*\n\nВыберите игру:"
+        text = "🎰 <b>Казино</b>\n\nВыберите игру:"
         kb = [
             [InlineKeyboardButton("🪙 Орёл и решка", callback_data="game_flip"),
              InlineKeyboardButton("💀 Русская рулетка", callback_data="game_roulette")],
@@ -1011,7 +1014,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- МИННОЕ ПОЛЕ ----------
     elif data == "game_mines":
-        text = "💣 *Минное поле*\n\nВыберите количество мин:"
+        text = "💣 <b>Минное поле</b>\n\nВыберите количество мин:"
         kb = [
             [InlineKeyboardButton("3 мины (x1.2)", callback_data="mines_set_3"),
              InlineKeyboardButton("4 мины (x1.45)", callback_data="mines_set_4"),
@@ -1026,8 +1029,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("mines_set_"):
         mines = int(data.replace("mines_set_", ""))
         context.user_data['mines_count'] = mines
-        text = f"💣 *Минное поле*\n\nМин: {mines}\n\nВведите сумму ставки:"
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        text = f"💣 <b>Минное поле</b>\n\nМин: {mines}\n\nВведите сумму ставки:"
+        await query.edit_message_text(text, parse_mode=PARSE_MODE)
         context.user_data['awaiting'] = 'mines_bet'
 
     elif data.startswith("mines_open_"):
@@ -1039,11 +1042,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = game.open_cell(pos)
         if res['result'] == 'lose':
             db.add_lost_stars(user_id, game.bet)
-            await edit_message(query, f"💥 *БАБАХ!*\n💰 Ставка {game.bet} ★ проиграна\n✨ +{int(game.bet*0.5)} ✨", InlineKeyboardMarkup(back_button("casino_menu")))
+            await edit_message(query, f"💥 <b>БАБАХ!</b>\n💰 Ставка {game.bet} ★ проиграна\n✨ +{int(game.bet*0.5)} ✨", InlineKeyboardMarkup(back_button("casino_menu")))
             context.user_data.pop('mines_game')
         elif res['result'] == 'win':
             db.update_balance(user_id, res['win'])
-            await edit_message(query, f"🎉 *ТЫ ВЫИГРАЛ ВСЁ ПОЛЕ!*\n💰 Выигрыш: {res['win']} ★", InlineKeyboardMarkup(back_button("casino_menu")))
+            await edit_message(query, f"🎉 <b>ТЫ ВЫИГРАЛ ВСЁ ПОЛЕ!</b>\n💰 Выигрыш: {res['win']} ★", InlineKeyboardMarkup(back_button("casino_menu")))
             context.user_data.pop('mines_game')
         elif res['result'] == 'continue':
             await show_mines_field(update, context, game)
@@ -1055,7 +1058,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if game:
             win = game.cashout()
             db.update_balance(user_id, win)
-            await edit_message(query, f"💰 *Забрал выигрыш*\n💵 {win} ★", InlineKeyboardMarkup(back_button("casino_menu")))
+            await edit_message(query, f"💰 <b>Забрал выигрыш</b>\n💵 {win} ★", InlineKeyboardMarkup(back_button("casino_menu")))
             context.user_data.pop('mines_game')
         else:
             await edit_message(query, "❌ Игра не найдена", InlineKeyboardMarkup(back_button("casino_menu")))
@@ -1079,20 +1082,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if m > 0:
             win = int(bet * m)
             db.update_balance(user_id, win)
-            text = f"🎉 *Выигрыш!*\n\n💰 {win} ★ (x{m})"
+            text = f"🎉 <b>Выигрыш!</b>\n\n💰 {win} ★ (x{m})"
         else:
             db.add_lost_stars(user_id, bet)
-            text = f"😢 *Проигрыш*\n\n💰 Ставка {bet} ★ проиграна\n✨ +{int(bet*0.5)} ✨"
+            text = f"😢 <b>Проигрыш</b>\n\n💰 Ставка {bet} ★ проиграна\n✨ +{int(bet*0.5)} ✨"
         kb = back_button("casino_menu")
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=PARSE_MODE)
         context.user_data.pop('game_data', None)
 
     # ---------- КЕЙС ----------
     elif data == "case_menu":
         case = db.get_cases()[0]
-        text = (f"📦 *Кейс {BOT_NAME}*\n\n"
+        text = (f"📦 <b>Кейс {BOT_NAME}</b>\n\n"
                 f"💰 Цена: {case[2]} ★\n\n"
-                f"**Шансы:**\n"
+                f"<b>Шансы:</b>\n"
                 f"❤️ Сердце (60%) — 15 ★\n"
                 f"🌹 Роза (17%) — 25 ★\n"
                 f"🚀 Ракета (7%) — 50 ★\n"
@@ -1107,7 +1110,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             back_button("main_menu")
         ]
         if CASE_IMAGE_ID:
-            await query.edit_message_media(media=InputMediaPhoto(media=CASE_IMAGE_ID, caption=text, parse_mode=ParseMode.MARKDOWN),
+            await query.edit_message_media(media=InputMediaPhoto(media=CASE_IMAGE_ID, caption=text, parse_mode=PARSE_MODE),
                                            reply_markup=InlineKeyboardMarkup(kb))
         else:
             await edit_message(query, text, InlineKeyboardMarkup(kb))
@@ -1129,13 +1132,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = db.open_case(1, user_id)
         if res:
             if res['type'] == 'nft':
-                text = (f"🎉 *Поздравляем!*\n\nВы выиграли NFT: **{res['name']}** (стоимость {res['value']} ★).\n"
+                text = (f"🎉 <b>Поздравляем!</b>\n\nВы выиграли NFT: <b>{res['name']}</b> (стоимость {res['value']} ★).\n"
                         f"NFT сохранён в инвентаре.")
                 kb = [[InlineKeyboardButton("📤 Вывести", callback_data=f"withdraw_nft_{res['name']}")],
                       back_button("case_menu")]
             else:
                 db.update_balance(user_id, res['value'])
-                text = f"🎉 *Поздравляем!*\n\nВы выиграли: **{res['name']}**\n💰 {res['value']} ★ зачислено на баланс!"
+                text = f"🎉 <b>Поздравляем!</b>\n\nВы выиграли: <b>{res['name']}</b>\n💰 {res['value']} ★ зачислено на баланс!"
                 kb = back_button("case_menu")
             await edit_message(query, text, InlineKeyboardMarkup(kb))
         else:
@@ -1159,10 +1162,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "inventory":
         inv = db.get_inventory(user_id)
         if not inv:
-            text = "📦 *Инвентарь пуст*"
+            text = "📦 <b>Инвентарь пуст</b>"
             kb = back_button("main_menu")
         else:
-            text = "📦 *Твои NFT:*\n\n"
+            text = "📦 <b>Твои NFT:</b>\n\n"
             kb = []
             for it in inv:
                 text += f"• {it[0]} — {it[1]} ★\n"
@@ -1196,7 +1199,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 await context.bot.send_message(
                     aid,
-                    f"🖼️ *Заявка на вывод NFT*\n\n👤 @{user[1] or user_id}\n🎁 {nft_name}\n💰 {price} ★\n🆔 #{wid}",
+                    f"🖼️ <b>Заявка на вывод NFT</b>\n\n👤 @{user[1] or user_id}\n🎁 {nft_name}\n💰 {price} ★\n🆔 #{wid}",
+                    parse_mode=PARSE_MODE,
                     reply_markup=InlineKeyboardMarkup(kb)
                 )
             await edit_message(query, f"✅ Заявка #{wid} отправлена на вывод.", InlineKeyboardMarkup(back_button("inventory")))
@@ -1206,7 +1210,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- ЗИМНИЙ МАГАЗИН ----------
     elif data == "winter_shop":
         items = db.get_shop_items()
-        text = f"❄️ *Зимний магазин*\n\nВаши снежинки: {user[4]} ✨\n\n**Доступно:**\n"
+        text = f"❄️ <b>Зимний магазин</b>\n\nВаши снежинки: {user[4]} ✨\n\n<b>Доступно:</b>\n"
         for name, price in items:
             text += f"• {name} — {price} ✨\n"
         text += "\n❄️ За проигрыши +0.5 ✨, за рефералов +5 ✨"
@@ -1237,7 +1241,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 await context.bot.send_message(
                     aid,
-                    f"🖼️ *Новая покупка NFT*\n\n👤 @{user[1] or user_id}\n🎁 {item_name}\n❄️ {price} ✨\n🆔 #{wid}",
+                    f"🖼️ <b>Новая покупка NFT</b>\n\n👤 @{user[1] or user_id}\n🎁 {item_name}\n❄️ {price} ✨\n🆔 #{wid}",
+                    parse_mode=PARSE_MODE,
                     reply_markup=InlineKeyboardMarkup(kb)
                 )
             await edit_message(query, f"✅ Куплено! Заявка #{wid} отправлена на вывод.", InlineKeyboardMarkup(back_button("winter_shop")))
@@ -1247,8 +1252,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- РЕФЕРАЛЫ ----------
     elif data == "referral":
         link = f"https://t.me/{BOT_USERNAME}?start=ref{user_id}"
-        text = (f"👥 *Рефералы*\n\n"
-                f"🔗 `{link}`\n\n"
+        text = (f"👥 <b>Рефералы</b>\n\n"
+                f"🔗 <code>{link}</code>\n\n"
                 f"Приглашено: {user[5]}\n"
                 f"Заработано: {user[5] * 5} ✨\n\n"
                 f"За каждого друга +5 ✨")
@@ -1268,11 +1273,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- ПРОМОКОД ----------
     elif data == "activate_promo":
         context.user_data['awaiting'] = 'promocode'
-        await edit_message(query, "🎟️ *Введите промокод:*")
+        await edit_message(query, "🎟️ <b>Введите промокод:</b>")
 
     # ---------- ЛОТЕРЕЯ ----------
     elif data == "lottery":
-        text = (f"🎟️ *ЛОТЕРЕЯ*\n\n"
+        text = (f"🎟️ <b>ЛОТЕРЕЯ</b>\n\n"
                 f"📭 Пока нет активных лотерей\n\n"
                 f"Следите за новостями!\n"
                 f"👉 https://t.me/{BOT_USERNAME}")
@@ -1281,7 +1286,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- ПОПОЛНЕНИЕ ----------
     elif data == "deposit_menu":
-        text = (f"💰 *Пополнение*\n\n"
+        text = (f"💰 <b>Пополнение</b>\n\n"
                 f"⭐ Stars — 1:1\n"
                 f"💎 CryptoBot — 1★ = 1.3 руб\n"
                 f"Минимум 10 ★")
@@ -1339,7 +1344,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.add_crypto_payment(user_id, stars_amount, invoice['invoice_id'])
             await edit_message(
                 query,
-                f"💎 *Счёт создан*\n\n[Оплатить]({invoice['pay_url']})",
+                f"💎 <b>Счёт создан</b>\n\n<a href='{invoice['pay_url']}'>Оплатить</a>",
                 InlineKeyboardMarkup(back_button("deposit_menu"))
             )
         else:
@@ -1347,7 +1352,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- ВЫВОД ----------
     elif data == "withdraw_menu":
-        text = (f"💸 *Вывод*\n\n"
+        text = (f"💸 <b>Вывод</b>\n\n"
                 f"💰 Баланс: {user[3]} ★\n"
                 f"📱 Telegram: @{user[9] or 'не указан'}\n"
                 f"💳 CryptoBot ID: {user[8] or 'не указан'}\n\n"
@@ -1366,7 +1371,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("💳 Указать CryptoBot ID", callback_data="set_crypto")],
             back_button("withdraw_menu")
         ]
-        await edit_message(query, "⚙️ *Настройки*", InlineKeyboardMarkup(kb))
+        await edit_message(query, "⚙️ <b>Настройки</b>", InlineKeyboardMarkup(kb))
 
     elif data == "set_telegram":
         context.user_data['awaiting'] = 'telegram'
@@ -1404,7 +1409,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stats = db.get_total_stats()
         ps = len(db.get_pending_withdrawals())
         pn = len(db.get_pending_nft_withdrawals())
-        text = (f"⚙️ *Админ-панель*\n\n"
+        text = (f"⚙️ <b>Админ-панель</b>\n\n"
                 f"👥 Пользователей: {stats['total_users']}\n"
                 f"💰 Баланс: {stats['total_balance']} ★\n"
                 f"❄️ Снежинок: {stats['total_snowflakes']} ✨\n"
@@ -1432,7 +1437,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in ADMIN_IDS:
             return
         s = db.get_daily_stats()
-        text = (f"📊 *Статистика за сегодня*\n\n"
+        text = (f"📊 <b>Статистика за сегодня</b>\n\n"
                 f"👥 Новые пользователи: {s['new_users']}\n"
                 f"🎮 Сыграно игр: {s['games']}\n"
                 f"🏆 Самая популярная: {s['popular']}\n\n"
@@ -1445,7 +1450,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in ADMIN_IDS:
             return
         s = db.get_weekly_stats()
-        text = (f"📊 *Статистика за неделю*\n\n"
+        text = (f"📊 <b>Статистика за неделю</b>\n\n"
                 f"👥 Новые пользователи: {s['new_users']}\n"
                 f"🎮 Сыграно игр: {s['games']}\n"
                 f"🏆 Самая популярная: {s['popular']}\n\n"
@@ -1458,7 +1463,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in ADMIN_IDS:
             return
         s = db.get_monthly_stats()
-        text = (f"📊 *Статистика за месяц*\n\n"
+        text = (f"📊 <b>Статистика за месяц</b>\n\n"
                 f"👥 Новые пользователи: {s['new_users']}\n"
                 f"🎮 Сыграно игр: {s['games']}\n"
                 f"🏆 Самая популярная: {s['popular']}\n\n"
@@ -1472,7 +1477,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in ADMIN_IDS:
             return
         users = db.get_all_users()
-        text = f"👥 *Всего: {len(users)}*\n\n"
+        text = f"👥 <b>Всего: {len(users)}</b>\n\n"
         for u in users[:20]:
             status = "🔴" if u[5] == 1 else "🟢"
             admin = "👑" if u[6] == 1 else ""
@@ -1486,7 +1491,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not ws:
             await edit_message(query, "✅ Нет заявок", InlineKeyboardMarkup(back_button("admin_panel")))
             return
-        text = "⏳ *Заявки на звёзды:*\n\n"
+        text = "⏳ <b>Заявки на звёзды:</b>\n\n"
         kb = []
         for w in ws[:5]:
             text += f"🆔 #{w[0]}\n👤 @{w[7]}\n💰 {w[2]} ★\n🕐 {w[6][:16]}\n\n"
@@ -1504,7 +1509,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if db.approve_withdrawal(wid, user_id):
             db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (wid,))
             uid, amt = db.cursor.fetchone()
-            await context.bot.send_message(uid, f"✅ *Заявка на вывод одобрена!*\n💰 {amt} ★\n⏳ Ожидайте выдачи.")
+            await context.bot.send_message(uid, f"✅ <b>Заявка на вывод одобрена!</b>\n💰 {amt} ★\n⏳ Ожидайте выдачи.")
             kb = [[InlineKeyboardButton(f"✅ Выдано #{wid}", callback_data=f"complete_withdrawal_{wid}")]]
             await edit_message(query, f"✅ Заявка #{wid} одобрена. После выдачи нажмите кнопку.", InlineKeyboardMarkup(kb))
         else:
@@ -1517,7 +1522,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if db.complete_withdrawal(wid, user_id):
             db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (wid,))
             uid, amt = db.cursor.fetchone()
-            await context.bot.send_message(uid, f"✅ *Вывод выполнен!*\n💰 {amt} ★ получены.")
+            await context.bot.send_message(uid, f"✅ <b>Вывод выполнен!</b>\n💰 {amt} ★ получены.")
             await edit_message(query, f"✅ Заявка #{wid} завершена.", InlineKeyboardMarkup(back_button("admin_panel")))
         else:
             await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("admin_panel")))
@@ -1537,7 +1542,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not ws:
             await edit_message(query, "✅ Нет заявок", InlineKeyboardMarkup(back_button("admin_panel")))
             return
-        text = "🖼️ *Заявки на NFT:*\n\n"
+        text = "🖼️ <b>Заявки на NFT:</b>\n\n"
         kb = []
         for w in ws[:5]:
             text += f"🆔 #{w[0]}\n👤 @{w[7]}\n🎁 {w[2]}\n💰 {w[3]} ★\n🕐 {w[6][:16]}\n\n"
@@ -1555,7 +1560,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if db.approve_nft_withdrawal(wid, user_id):
             db.cursor.execute('SELECT user_id, nft_name FROM nft_withdrawals WHERE id = ?', (wid,))
             uid, name = db.cursor.fetchone()
-            await context.bot.send_message(uid, f"✅ *Заявка на вывод NFT одобрена!*\n🎁 {name}\n⏳ Ожидайте выдачи.")
+            await context.bot.send_message(uid, f"✅ <b>Заявка на вывод NFT одобрена!</b>\n🎁 {name}\n⏳ Ожидайте выдачи.")
             kb = [[InlineKeyboardButton(f"✅ Выдано #{wid}", callback_data=f"complete_nft_{wid}")]]
             await edit_message(query, f"✅ Заявка #{wid} одобрена.", InlineKeyboardMarkup(kb))
         else:
@@ -1568,7 +1573,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if db.complete_nft_withdrawal(wid, user_id):
             db.cursor.execute('SELECT user_id, nft_name FROM nft_withdrawals WHERE id = ?', (wid,))
             uid, name = db.cursor.fetchone()
-            await context.bot.send_message(uid, f"✅ *NFT выдан!*\n🎁 {name} получен.")
+            await context.bot.send_message(uid, f"✅ <b>NFT выдан!</b>\n🎁 {name} получен.")
             await edit_message(query, f"✅ Заявка #{wid} завершена.", InlineKeyboardMarkup(back_button("admin_panel")))
         else:
             await edit_message(query, "❌ Ошибка", InlineKeyboardMarkup(back_button("admin_panel")))
@@ -1585,9 +1590,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in ADMIN_IDS:
             return
         promos = db.get_all_promocodes()
-        text = "🎟️ *Промокоды*\n\n"
+        text = "🎟️ <b>Промокоды</b>\n\n"
         for p in promos:
-            text += f"• `{p[1]}` — {p[2]} ★ | {p[5]}/{p[4]}\n"
+            text += f"• <code>{p[1]}</code> — {p[2]} ★ | {p[5]}/{p[4]}\n"
         kb = [
             [InlineKeyboardButton("➕ Создать", callback_data="admin_create_promo")],
             back_button("admin_panel")
@@ -1608,7 +1613,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not banned:
             await edit_message(query, "✅ Нет забаненных", InlineKeyboardMarkup(back_button("admin_panel")))
             return
-        text = "🔨 *Забанены:*\n\n"
+        text = "🔨 <b>Забанены:</b>\n\n"
         kb = []
         for b in banned:
             text += f"• {b[2]} (@{b[1]}) — ID: {b[0]}\n"
@@ -1634,7 +1639,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_images":
         if user_id not in ADMIN_IDS:
             return
-        text = (f"🖼️ *Картинки*\n\n"
+        text = (f"🖼️ <b>Картинки</b>\n\n"
                 f"Приветствие: {'✅' if WELCOME_IMAGE_ID else '❌'}\n"
                 f"Кейс: {'✅' if CASE_IMAGE_ID else '❌'}")
         kb = [
@@ -1676,7 +1681,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         if user_id in ADMIN_IDS:
             kb.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
-        text = f"🌟 *{BOT_NAME}*\n\n🆔 ID: {user_id}\n💰 Баланс: {u[3]} ★\n❄️ Снежинки: {u[4]} ✨"
+        text = f"🌟 <b>{BOT_NAME}</b>\n\n🆔 ID: {user_id}\n💰 Баланс: {u[3]} ★\n❄️ Снежинки: {u[4]} ✨"
         await edit_message(query, text, InlineKeyboardMarkup(kb))
 
 # ================== ПЛАТЕЖИ ==================
@@ -1701,15 +1706,15 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         res = db.open_case(1, uid)
         if res:
             if res['type'] == 'nft':
-                text = (f"🎉 *Поздравляем!*\n\nВы выиграли NFT: **{res['name']}** (стоимость {res['value']} ★).\n"
+                text = (f"🎉 <b>Поздравляем!</b>\n\nВы выиграли NFT: <b>{res['name']}</b> (стоимость {res['value']} ★).\n"
                         f"NFT сохранён в инвентаре.")
-                kb = [[InlineKeyboardButton("📤 Вывести", callback_data=f"withdraw_nft_{res['name']}")],
-                      [InlineKeyboardButton("◀️ Назад", callback_data="case_menu")]]
+                kb = [[InlineKeyboardButton("📤 Вывести", callback_data=f"withdraw_nft_{res['name']}"),
+                       InlineKeyboardButton("◀️ Назад", callback_data="case_menu")]]
             else:
                 db.update_balance(uid, res['value'])
-                text = f"🎉 *Поздравляем!*\n\nВы выиграли: **{res['name']}**\n💰 {res['value']} ★ зачислено на баланс!"
+                text = f"🎉 <b>Поздравляем!</b>\n\nВы выиграли: <b>{res['name']}</b>\n💰 {res['value']} ★ зачислено на баланс!"
                 kb = [[InlineKeyboardButton("◀️ Назад", callback_data="case_menu")]]
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+            await update.message.reply_text(text, parse_mode=PARSE_MODE, reply_markup=InlineKeyboardMarkup(kb))
         else:
             await update.message.reply_text("❌ Ошибка открытия кейса")
 
@@ -1810,7 +1815,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 await context.bot.send_message(
                     aid,
-                    f"⏳ *Новая заявка*\n👤 @{update.effective_user.username or user_id}\n💰 {amt} ★\n📱 Telegram\n🆔 #{wid}",
+                    f"⏳ <b>Новая заявка</b>\n👤 @{update.effective_user.username or user_id}\n💰 {amt} ★\n📱 Telegram\n🆔 #{wid}",
+                    parse_mode=PARSE_MODE,
                     reply_markup=InlineKeyboardMarkup(kb)
                 )
             context.user_data.pop('awaiting')
@@ -1836,7 +1842,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 await context.bot.send_message(
                     aid,
-                    f"⏳ *Новая заявка*\n👤 @{update.effective_user.username or user_id}\n💰 {amt} ★\n💳 CryptoBot\n🆔 #{wid}",
+                    f"⏳ <b>Новая заявка</b>\n👤 @{update.effective_user.username or user_id}\n💰 {amt} ★\n💳 CryptoBot\n🆔 #{wid}",
+                    parse_mode=PARSE_MODE,
                     reply_markup=InlineKeyboardMarkup(kb)
                 )
             context.user_data.pop('awaiting')
@@ -1853,7 +1860,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Заявка #{wid} отклонена")
             db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (wid,))
             uid, amt = db.cursor.fetchone()
-            await context.bot.send_message(uid, f"❌ *Заявка на вывод отклонена*\n💰 {amt} ★\n📝 Причина: {reason}")
+            await context.bot.send_message(uid, f"❌ <b>Заявка на вывод отклонена</b>\n💰 {amt} ★\n📝 Причина: {reason}")
         else:
             await update.message.reply_text("❌ Ошибка")
         context.user_data.pop('awaiting')
@@ -1869,7 +1876,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Заявка #{wid} отклонена")
             db.cursor.execute('SELECT user_id, nft_name FROM nft_withdrawals WHERE id = ?', (wid,))
             uid, name = db.cursor.fetchone()
-            await context.bot.send_message(uid, f"❌ *Заявка на вывод NFT отклонена*\n🎁 {name}\n📝 Причина: {reason}")
+            await context.bot.send_message(uid, f"❌ <b>Заявка на вывод NFT отклонена</b>\n🎁 {name}\n📝 Причина: {reason}")
         else:
             await update.message.reply_text("❌ Ошибка")
         context.user_data.pop('awaiting')
@@ -1882,7 +1889,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = f"✅ Промокод активирован!\n💰 +{res['amount']} ★"
         else:
             msg = res['reason']
-        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(home_button()))
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(home_button()), parse_mode=PARSE_MODE)
         context.user_data.pop('awaiting')
 
     elif state == 'promo_amount':
@@ -1915,7 +1922,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             amt = context.user_data['promo_amount']
             days = context.user_data['promo_days']
             code = db.generate_promocode(amt, days, max_uses, user_id)
-            await update.message.reply_text(f"✅ Код: `{code}`", parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(f"✅ Код: <code>{code}</code>", parse_mode=PARSE_MODE)
             context.user_data.clear()
         except:
             await update.message.reply_text("❌ Введите число")
@@ -1934,7 +1941,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption = update.message.caption or ""
             for u in users:
                 try:
-                    await context.bot.send_photo(chat_id=u[0], photo=photo, caption=caption)
+                    await context.bot.send_photo(chat_id=u[0], photo=photo, caption=caption, parse_mode=PARSE_MODE)
                     sent += 1
                     await asyncio.sleep(0.05)
                 except:
@@ -1942,7 +1949,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             for u in users:
                 try:
-                    await context.bot.send_message(chat_id=u[0], text=text)
+                    await context.bot.send_message(chat_id=u[0], text=text, parse_mode=PARSE_MODE)
                     sent += 1
                     await asyncio.sleep(0.05)
                 except:
@@ -1953,7 +1960,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("=" * 60)
-    print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ)")
+    print(f"🚀 ЗАПУСК {BOT_NAME} (ФИНАЛЬНАЯ ВЕРСИЯ С HTML)")
     print("=" * 60)
     print("✅ Все игры с анимациями")
     print("✅ Минное поле (полноценное)")
