@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Any, Callable
 import signal
 import sys
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, PreCheckoutQuery, InputMediaPhoto, WebAppInfo
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, 
     ContextTypes, MessageHandler, filters, PreCheckoutQueryHandler
@@ -23,6 +23,8 @@ from telegram.error import TelegramError
 # ======================== НАСТРОЙКА ========================
 TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "YOUR_CRYPTOBOT_API_KEY")
+WEBAPP_URL = os.environ.get("WEBAPP_URL", "")
+
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 
 ADMIN_IDS = [5697184715]  # ТВОЙ ID
@@ -1835,9 +1837,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     if user_id in ADMIN_IDS:
         keyboard_rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
-    
+    if WEBAPP_URL:
+        keyboard_rows.insert(0, [InlineKeyboardButton("🚀 Открыть мини-приложение", web_app=WebAppInfo(url=WEBAPP_URL))])
+
     kb = InlineKeyboardMarkup(keyboard_rows)
-    
+
     text = (f"🌟 Добро пожаловать в {BOT_NAME}!\n\n"
             f"🆔 ID: {user_id}\n"
             f"👤 Имя: {user.first_name}\n"
@@ -1850,6 +1854,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN,
                                         reply_markup=kb)
+
 
 # ================== ОБРАБОТЧИК КНОПОК ==================
 
