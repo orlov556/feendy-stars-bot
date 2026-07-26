@@ -58,6 +58,21 @@ MAX_BET_PERCENT = 0.5
 MAX_BET_ABSOLUTE = 1000.0
 RATE_LIMIT_SECONDS = 6
 
+# ======================== УДАЛЕНИЕ ВЕБХУКА ПРИ ЗАПУСКЕ ========================
+try:
+    if TELEGRAM_TOKEN:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook",
+            json={"drop_pending_updates": True},
+            timeout=5
+        )
+        if response.status_code == 200:
+            print("✅ Вебхук очищен при загрузке")
+        else:
+            print(f"⚠️ Ошибка очистки вебхука: {response.text}")
+except Exception as e:
+    print(f"⚠️ Ошибка очистки вебхука: {e}")
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -2549,7 +2564,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ======================== ЗАПУСК ========================
 def main():
-    import asyncio
     print("=" * 60)
     print(f"🚀 ЗАПУСК {BOT_NAME} (ВАЛЮТА: $, ПОПОЛНЕНИЕ CRYPTOBOT)")
     print("=" * 60)
@@ -2562,16 +2576,6 @@ def main():
 
     try:
         application = Application.builder().token(TELEGRAM_TOKEN).build()
-        
-        # Принудительно удаляем вебхук при запуске
-        async def clean_webhook():
-            try:
-                await application.bot.delete_webhook(drop_pending_updates=True)
-                print("✅ Вебхук очищен")
-            except Exception as e:
-                print(f"⚠️ Ошибка очистки вебхука: {e}")
-        
-        asyncio.run(clean_webhook())
         
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_handler))
