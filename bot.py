@@ -20,7 +20,19 @@ from telegram.ext import (
     ContextTypes, MessageHandler, filters, PreCheckoutQueryHandler
 )
 from telegram.constants import ParseMode
-from telegram.error import TelegramError
+from telegram.error import TelegramError, Conflict
+
+# ======================== РЕГИСТРАЦИЯ АДАПТЕРА ДЛЯ SQLITE ========================
+def adapt_datetime(dt):
+    return dt.isoformat()
+
+def convert_datetime(s):
+    if s:
+        return datetime.fromisoformat(s)
+    return None
+
+sqlite3.register_adapter(datetime, adapt_datetime)
+sqlite3.register_converter("timestamp", convert_datetime)
 
 # ======================== НАСТРОЙКА ========================
 TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -51,23 +63,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
-# ======================== ФУНКЦИЯ ДЛЯ СОЗДАНИЯ ЦВЕТНЫХ КНОПОК ========================
-def colored_button(text: str, callback_data: str = None, url: str = None, style: str = None):
-    """
-    Создаёт цветную кнопку.
-    style: 'primary' (синяя), 'success' (зелёная), 'danger' (красная), None (обычная)
-    """
-    if callback_data:
-        return InlineKeyboardButton(text, callback_data=callback_data, style=style)
-    elif url:
-        return InlineKeyboardButton(text, url=url, style=style)
-    else:
-        return InlineKeyboardButton(text, style=style)
-
-def colored_row(buttons: list):
-    """Создаёт ряд из цветных кнопок"""
-    return [colored_button(**btn) for btn in buttons]
 
 # ======================== CRYPTOBOT API ========================
 class CryptoBotAPI:
@@ -142,7 +137,7 @@ class Database:
             except:
                 pass
 
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
         self.conn.row_factory = sqlite3.Row
         self.cursor = self.conn.cursor()
         self._create_tables()
@@ -160,7 +155,7 @@ class Database:
                 balance REAL DEFAULT 0.0,
                 referrals INTEGER DEFAULT 0,
                 referred_by INTEGER,
-                daily_bonus DATE,
+                daily_bonus TEXT,
                 crypto_id TEXT,
                 telegram_username TEXT,
                 is_admin INTEGER DEFAULT 0,
@@ -210,7 +205,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT UNIQUE,
                 amount REAL,
-                expires_at DATE,
+                expires_at TEXT,
                 max_uses INTEGER,
                 used_count INTEGER DEFAULT 0,
                 created_by INTEGER,
@@ -300,7 +295,7 @@ class Database:
     def _init_promocodes(self):
         self.cursor.execute('SELECT COUNT(*) FROM promocodes')
         if self.cursor.fetchone()[0] == 0:
-            expiry = (datetime.now() + timedelta(days=30)).date()
+            expiry = (datetime.now() + timedelta(days=30)).date().isoformat()
             self.cursor.execute('''
                 INSERT INTO promocodes (code, amount, expires_at, max_uses, created_by)
                 VALUES (?, ?, ?, ?, ?)
@@ -398,10 +393,10 @@ class Database:
         return self.cursor.fetchone()
 
     def check_daily_bonus(self, user_id):
-        today = datetime.now().date()
+        today = datetime.now().date().isoformat()
         self.cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
         res = self.cursor.fetchone()
-        if not res or not res[0] or datetime.strptime(res[0], '%Y-%m-%d').date() < today:
+        if not res or not res[0] or res[0] < today:
             r = random.random()
             if r < 0.4:
                 bonus = 0.1
@@ -505,7 +500,7 @@ class Database:
     # ---------- Промокоды ----------
     def generate_promocode(self, amount, days_valid, max_uses, created_by):
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        expires_at = (datetime.now() + timedelta(days=days_valid)).date()
+        expires_at = (datetime.now() + timedelta(days=days_valid)).date().isoformat()
         self.cursor.execute('''
             INSERT INTO promocodes (code, amount, expires_at, max_uses, created_by)
             VALUES (?, ?, ?, ?, ?)
@@ -521,7 +516,7 @@ class Database:
         promo = self.get_promocode_info(code)
         if not promo:
             return {'success': False, 'reason': '❌ Код не найден'}
-        if promo[3] and datetime.now().date() > datetime.strptime(promo[3], '%Y-%m-%d').date():
+        if promo[3] and datetime.now().date().isoformat() > promo[3]:
             return {'success': False, 'reason': '❌ Промокод истёк'}
         if promo[4] > 0 and promo[5] >= promo[4]:
             return {'success': False, 'reason': '❌ Промокод использован максимальное количество раз'}
@@ -564,8 +559,8 @@ class Database:
         return '—'
 
     def get_daily_stats(self):
-        today = datetime.now().date()
-        since = today.strftime('%Y-%m-%d 00:00:00')
+        today = datetime.now().date().isoformat()
+        since = f"{today} 00:00:00"
         self.cursor.execute('SELECT COUNT(*) FROM users WHERE created_at >= ?', (since,))
         new_users = self.cursor.fetchone()[0]
         self.cursor.execute('SELECT COUNT(*) FROM games WHERE created_at >= ?', (since,))
@@ -679,7 +674,9 @@ class Database:
         self.cursor.execute('SELECT last_game_time FROM users WHERE user_id = ?', (user_id,))
         row = self.cursor.fetchone()
         if row and row[0]:
-            last_time = datetime.fromisoformat(row[0])
+            last_time = row[0]
+            if isinstance(last_time, str):
+                last_time = datetime.fromisoformat(last_time)
             if (datetime.now() - last_time).total_seconds() < RATE_LIMIT_SECONDS:
                 return False
         self.cursor.execute('UPDATE users SET last_game_time = ? WHERE user_id = ?', (datetime.now().isoformat(), user_id))
@@ -834,7 +831,8 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
                 await update.message.reply_text(text, reply_markup=kb)
         else:
             await update.message.reply_text(text, reply_markup=kb)
-            # ======================== ИГРЫ ========================
+
+# ======================== ИГРЫ ========================
 async def play_flip(update, context, user_id):
     query = update.callback_query
     user = db.get_user(user_id)
@@ -1494,7 +1492,8 @@ class DepositHandler:
                 await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True, reply_markup=back_button("deposit_menu"))
         else:
             await update.message.reply_text("❌ Ошибка создания счёта. Попробуйте позже.")
-            # ======================== СТАРТ ========================
+
+# ======================== СТАРТ ========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_ban(update, context):
         return
@@ -2132,7 +2131,110 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current = GAME_SETTINGS['football']['miss']
         await edit_message(query, f"⚽ Футбол - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.7 для выигрыша):")
 
-    # ... аналогично для basketball, darts, bowling ...
+    elif data == "game_setting_basketball":
+        if user_id not in ADMIN_IDS:
+            return
+        current_point = GAME_SETTINGS['basketball']['point']
+        current_miss = GAME_SETTINGS['basketball']['miss']
+        text = (f"🏀 Баскетбол\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• ОЧКО: x{current_point}\n"
+                f"• МИМО: x{current_miss}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("ОЧКО", callback_data="basketball_setting_point", style="success")],
+            [InlineKeyboardButton("МИМО", callback_data="basketball_setting_miss", style="danger")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "basketball_setting_point":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'basketball'
+        context.user_data['setting_key'] = 'point'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['basketball']['point']
+        await edit_message(query, f"🏀 Баскетбол - ОЧКО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.4, 1.7, 2.0):")
+
+    elif data == "basketball_setting_miss":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'basketball'
+        context.user_data['setting_key'] = 'miss'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['basketball']['miss']
+        await edit_message(query, f"🏀 Баскетбол - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.4 для выигрыша):")
+
+    elif data == "game_setting_darts":
+        if user_id not in ADMIN_IDS:
+            return
+        current_bullseye = GAME_SETTINGS['darts']['bullseye']
+        current_miss = GAME_SETTINGS['darts']['miss']
+        text = (f"🎯 Дартс\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• В ЯБЛОЧКО: x{current_bullseye}\n"
+                f"• МИМО: x{current_miss}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("В ЯБЛОЧКО", callback_data="darts_setting_bullseye", style="success")],
+            [InlineKeyboardButton("МИМО", callback_data="darts_setting_miss", style="danger")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "darts_setting_bullseye":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'darts'
+        context.user_data['setting_key'] = 'bullseye'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['darts']['bullseye']
+        await edit_message(query, f"🎯 Дартс - В ЯБЛОЧКО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.95, 2.5, 3.0):")
+
+    elif data == "darts_setting_miss":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'darts'
+        context.user_data['setting_key'] = 'miss'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['darts']['miss']
+        await edit_message(query, f"🎯 Дартс - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.5 для выигрыша):")
+
+    elif data == "game_setting_bowling":
+        if user_id not in ADMIN_IDS:
+            return
+        current_strike = GAME_SETTINGS['bowling']['strike']
+        current_miss = GAME_SETTINGS['bowling']['miss']
+        text = (f"🎳 Боулинг\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• СТРАЙК: x{current_strike}\n"
+                f"• МИМО: x{current_miss}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("СТРАЙК", callback_data="bowling_setting_strike", style="success")],
+            [InlineKeyboardButton("МИМО", callback_data="bowling_setting_miss", style="danger")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "bowling_setting_strike":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'bowling'
+        context.user_data['setting_key'] = 'strike'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['bowling']['strike']
+        await edit_message(query, f"🎳 Боулинг - СТРАЙК\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.9, 2.5, 3.0):")
+
+    elif data == "bowling_setting_miss":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'bowling'
+        context.user_data['setting_key'] = 'miss'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['bowling']['miss']
+        await edit_message(query, f"🎳 Боулинг - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.5 для выигрыша):")
 
     # ---------- СТАТИСТИКА ----------
     elif data == "admin_stats_daily":
@@ -2447,6 +2549,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ======================== ЗАПУСК ========================
 def main():
+    import asyncio
     print("=" * 60)
     print(f"🚀 ЗАПУСК {BOT_NAME} (ВАЛЮТА: $, ПОПОЛНЕНИЕ CRYPTOBOT)")
     print("=" * 60)
@@ -2459,11 +2562,23 @@ def main():
 
     try:
         application = Application.builder().token(TELEGRAM_TOKEN).build()
+        
+        # Принудительно удаляем вебхук при запуске
+        async def clean_webhook():
+            try:
+                await application.bot.delete_webhook(drop_pending_updates=True)
+                print("✅ Вебхук очищен")
+            except Exception as e:
+                print(f"⚠️ Ошибка очистки вебхука: {e}")
+        
+        asyncio.run(clean_webhook())
+        
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_handler))
         application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
         application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
         application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
+        
         print("🤖 Бот запущен!")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
