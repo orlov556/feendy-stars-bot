@@ -780,14 +780,15 @@ async def check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def back_button(target='main_menu'):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("◀️ Назад", callback_data=target, style="primary")]
+        [InlineKeyboardButton("◀️ Назад", callback_data=target)]
     ])
 
 def home_button():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu", style="primary")]
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ])
-    # ======================== ВАЛИДАЦИЯ СТАВКИ ========================
+
+# ======================== ВАЛИДАЦИЯ СТАВКИ ========================
 async def validate_bet(update, context, user_id, bet):
     if bet <= 0:
         await update.message.reply_text("❌ Ставка должна быть положительной.")
@@ -824,7 +825,7 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
         context.user_data['pending_action'] = action_callback
         text = f"{success_message}\n\n💰 С баланса спишется ${required_amount:.2f}."
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Подтвердить", callback_data=action_callback, style="success")]
+            [InlineKeyboardButton("✅ Подтвердить", callback_data=action_callback)]
         ])
         try:
             if isinstance(update, Update):
@@ -846,8 +847,8 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
                 f"Не хватает: ${missing:.2f}\n\n"
                 f"Пополнить сейчас?")
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"💰 Пополнить ${missing:.2f}", callback_data="deposit_crypto", style="primary")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu", style="danger")]
+            [InlineKeyboardButton(f"💰 Пополнить ${missing:.2f}", callback_data="deposit_crypto")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
         if isinstance(update, Update):
             if update.callback_query:
@@ -869,9 +870,9 @@ async def play_flip(update, context, user_id):
             f"• 🪙 Решка - x{win_mult}\n\n"
             f"Выбери на что ставишь:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🦅 ОРЁЛ (x{win_mult})", callback_data="flip_choice_1", style="primary"),
-         InlineKeyboardButton(f"🪙 РЕШКА (x{win_mult})", callback_data="flip_choice_2", style="primary")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"🦅 ОРЁЛ (x{win_mult})", callback_data="flip_choice_1"),
+         InlineKeyboardButton(f"🪙 РЕШКА (x{win_mult})", callback_data="flip_choice_2")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -889,13 +890,13 @@ async def play_roulette(update, context, user_id):
             f"• 6️⃣ патронов - 💀 100% смерть\n\n"
             f"Выбери количество патронов:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"1️⃣ (x{GAME_SETTINGS['roulette']['1']})", callback_data="roulette_choice_1", style="primary"),
-         InlineKeyboardButton(f"2️⃣ (x{GAME_SETTINGS['roulette']['2']})", callback_data="roulette_choice_2", style="primary"),
-         InlineKeyboardButton(f"3️⃣ (x{GAME_SETTINGS['roulette']['3']})", callback_data="roulette_choice_3", style="primary")],
-        [InlineKeyboardButton(f"4️⃣ (x{GAME_SETTINGS['roulette']['4']})", callback_data="roulette_choice_4", style="primary"),
-         InlineKeyboardButton(f"5️⃣ (x{GAME_SETTINGS['roulette']['5']})", callback_data="roulette_choice_5", style="primary"),
-         InlineKeyboardButton("6️⃣ (💀)", callback_data="roulette_choice_6", style="danger")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"1️⃣ (x{GAME_SETTINGS['roulette']['1']})", callback_data="roulette_choice_1"),
+         InlineKeyboardButton(f"2️⃣ (x{GAME_SETTINGS['roulette']['2']})", callback_data="roulette_choice_2"),
+         InlineKeyboardButton(f"3️⃣ (x{GAME_SETTINGS['roulette']['3']})", callback_data="roulette_choice_3")],
+        [InlineKeyboardButton(f"4️⃣ (x{GAME_SETTINGS['roulette']['4']})", callback_data="roulette_choice_4"),
+         InlineKeyboardButton(f"5️⃣ (x{GAME_SETTINGS['roulette']['5']})", callback_data="roulette_choice_5"),
+         InlineKeyboardButton("6️⃣ (💀)", callback_data="roulette_choice_6")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -909,9 +910,9 @@ async def play_dice(update, context, user_id):
             f"• 🔴 Чёт/Нечёт - x{GAME_SETTINGS['dice_even_odd']['win_multiplier']} (шанс 1/2, RTP {int(RTP_FACTOR*100)}%)\n\n"
             f"Выбери режим игры:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🔢 НА ЧИСЛО (x{GAME_SETTINGS['dice_number']['win_multiplier']})", callback_data="dice_number_menu", style="primary")],
-        [InlineKeyboardButton(f"🟥 ЧЁТ / НЕЧЁТ (x{GAME_SETTINGS['dice_even_odd']['win_multiplier']})", callback_data="dice_even_odd_menu", style="primary")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"🔢 НА ЧИСЛО (x{GAME_SETTINGS['dice_number']['win_multiplier']})", callback_data="dice_number_menu")],
+        [InlineKeyboardButton(f"🟥 ЧЁТ / НЕЧЁТ (x{GAME_SETTINGS['dice_even_odd']['win_multiplier']})", callback_data="dice_even_odd_menu")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -925,13 +926,13 @@ async def play_dice_number(update, context, user_id):
             f"• Любое число - x{win_mult}\n\n"
             f"Выбери число:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("1️⃣", callback_data="dice_num_1", style="primary"),
-         InlineKeyboardButton("2️⃣", callback_data="dice_num_2", style="primary"),
-         InlineKeyboardButton("3️⃣", callback_data="dice_num_3", style="primary")],
-        [InlineKeyboardButton("4️⃣", callback_data="dice_num_4", style="primary"),
-         InlineKeyboardButton("5️⃣", callback_data="dice_num_5", style="primary"),
-         InlineKeyboardButton("6️⃣", callback_data="dice_num_6", style="primary")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="game_dice_classic", style="danger")]
+        [InlineKeyboardButton("1️⃣", callback_data="dice_num_1"),
+         InlineKeyboardButton("2️⃣", callback_data="dice_num_2"),
+         InlineKeyboardButton("3️⃣", callback_data="dice_num_3")],
+        [InlineKeyboardButton("4️⃣", callback_data="dice_num_4"),
+         InlineKeyboardButton("5️⃣", callback_data="dice_num_5"),
+         InlineKeyboardButton("6️⃣", callback_data="dice_num_6")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="game_dice_classic")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -946,9 +947,9 @@ async def play_dice_even_odd(update, context, user_id):
             f"• ❌ Нечётное - x{win_mult}\n\n"
             f"Выбери ставку:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"✅ ЧЁТНОЕ (x{win_mult})", callback_data="dice_even", style="success"),
-         InlineKeyboardButton(f"❌ НЕЧЁТНОЕ (x{win_mult})", callback_data="dice_odd", style="danger")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="game_dice_classic", style="danger")]
+        [InlineKeyboardButton(f"✅ ЧЁТНОЕ (x{win_mult})", callback_data="dice_even"),
+         InlineKeyboardButton(f"❌ НЕЧЁТНОЕ (x{win_mult})", callback_data="dice_odd")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="game_dice_classic")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -966,10 +967,10 @@ async def play_slots(update, context, user_id):
             f"• 3️⃣ три совпадения - x{mult3}\n\n"
             f"Выбери на что ставишь:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"1️⃣ ОДНО (x{mult1})", callback_data="slots_choice_1", style="primary")],
-        [InlineKeyboardButton(f"2️⃣ ДВА (x{mult2})", callback_data="slots_choice_2", style="primary")],
-        [InlineKeyboardButton(f"3️⃣ ТРИ (x{mult3})", callback_data="slots_choice_3", style="success")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"1️⃣ ОДНО (x{mult1})", callback_data="slots_choice_1")],
+        [InlineKeyboardButton(f"2️⃣ ДВА (x{mult2})", callback_data="slots_choice_2")],
+        [InlineKeyboardButton(f"3️⃣ ТРИ (x{mult3})", callback_data="slots_choice_3")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -985,9 +986,9 @@ async def play_football(update, context, user_id):
             f"• 💨 МИМО - x{miss_mult} (шанс 2/3)\n\n"
             f"Выбери на что ставишь:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"⚽ ГОЛ (x{goal_mult})", callback_data="football_goal", style="success"),
-         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="football_miss", style="danger")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"⚽ ГОЛ (x{goal_mult})", callback_data="football_goal"),
+         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="football_miss")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -1003,9 +1004,9 @@ async def play_basketball(update, context, user_id):
             f"• 💨 МИМО - x{miss_mult} (шанс 2/3)\n\n"
             f"Выбери на что ставишь:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🏀 ОЧКО (x{point_mult})", callback_data="basketball_point", style="success"),
-         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="basketball_miss", style="danger")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"🏀 ОЧКО (x{point_mult})", callback_data="basketball_point"),
+         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="basketball_miss")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -1021,9 +1022,9 @@ async def play_darts(update, context, user_id):
             f"• 💨 МИМО - x{miss_mult} (шанс 5/6)\n\n"
             f"Выбери на что ставишь:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🎯 В ЯБЛОЧКО (x{bullseye_mult})", callback_data="darts_bullseye", style="success"),
-         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="darts_miss", style="danger")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"🎯 В ЯБЛОЧКО (x{bullseye_mult})", callback_data="darts_bullseye"),
+         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="darts_miss")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -1039,9 +1040,9 @@ async def play_bowling(update, context, user_id):
             f"• 💨 МИМО - x{miss_mult} (шанс 5/6)\n\n"
             f"Выбери на что ставишь:")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🎳 СТРАЙК (x{strike_mult})", callback_data="bowling_strike", style="success"),
-         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="bowling_miss", style="danger")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+        [InlineKeyboardButton(f"🎳 СТРАЙК (x{strike_mult})", callback_data="bowling_strike"),
+         InlineKeyboardButton(f"💨 МИМО (x{miss_mult})", callback_data="bowling_miss")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -1307,8 +1308,7 @@ async def process_game_result(update, context, user_id, bet, game_type, game_cho
         elif res == 43 or res == 22:
             matches = 2
         else:
-            matches = 1
-        if matches == int(game_choice):
+            matches = 1        if matches == int(game_choice):
             if random.random() < RTP_FACTOR:
                 multiplier = GAME_SETTINGS['slots'].get(game_choice, 0)
                 win = bet * multiplier
@@ -1413,9 +1413,9 @@ async def process_game_result(update, context, user_id, bet, game_type, game_cho
     else:
         base_game = game_type
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎮 Играть еще", callback_data=f"game_{base_game}", style="primary"),
-         InlineKeyboardButton("🎰 В казино", callback_data="casino_menu", style="primary")],
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu", style="danger")]
+        [InlineKeyboardButton("🎮 Играть еще", callback_data=f"game_{base_game}"),
+         InlineKeyboardButton("🎰 В казино", callback_data="casino_menu")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ])
     await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
@@ -1455,12 +1455,12 @@ async def show_mines_field(update, context, game):
         for j in range(5):
             idx = i + j
             if idx in game.opened:
-                row.append(InlineKeyboardButton("✅", callback_data="noop", style="success"))
+                row.append(InlineKeyboardButton("✅", callback_data="noop"))
             else:
-                row.append(InlineKeyboardButton(f"{idx+1}", callback_data=f"mines_open_{idx}", style="primary"))
+                row.append(InlineKeyboardButton(f"{idx+1}", callback_data=f"mines_open_{idx}"))
         kb.append(row)
-    kb.append([InlineKeyboardButton("💰 Забрать", callback_data="mines_cashout", style="success")])
-    kb.append([InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")])
+    kb.append([InlineKeyboardButton("💰 Забрать", callback_data="mines_cashout")])
+    kb.append([InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")])
     text = (f"💣 Минное поле\n💰 Ставка: ${game.bet:.2f}\n"
             f"📈 Множитель: x{game.multiplier:.2f}\n"
             f"✅ Открыто: {len(game.opened)}/{25-game.mines_count}")
@@ -1517,7 +1517,8 @@ class DepositHandler:
                 await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True, reply_markup=back_button("deposit_menu"))
         else:
             await update.message.reply_text("❌ Ошибка создания счёта. Попробуйте позже.")
-            # ======================== СТАРТ ========================
+
+# ======================== СТАРТ ========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_ban(update, context):
         return
@@ -1533,18 +1534,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = db.get_user(user_id)
 
     keyboard_rows = [
-        [InlineKeyboardButton("🎰 Казино", callback_data="casino_menu", style="primary"),
-         InlineKeyboardButton("📦 Кейс Сакура", callback_data="case_menu", style="primary")],
-        [InlineKeyboardButton("🎁 Бонус", callback_data="daily_bonus", style="success"),
-         InlineKeyboardButton("👥 Рефералы", callback_data="referral", style="primary")],
-        [InlineKeyboardButton("👤 Профиль", callback_data="profile", style="primary"),
-         InlineKeyboardButton("💰 Пополнить", callback_data="deposit_menu", style="success")],
-        [InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu", style="primary"),
-         InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo", style="primary")],
-        [InlineKeyboardButton("📜 Правила", callback_data="rules", style="primary")]
+        [InlineKeyboardButton("🎰 Казино", callback_data="casino_menu"),
+         InlineKeyboardButton("📦 Кейс Сакура", callback_data="case_menu")],
+        [InlineKeyboardButton("🎁 Бонус", callback_data="daily_bonus"),
+         InlineKeyboardButton("👥 Рефералы", callback_data="referral")],
+        [InlineKeyboardButton("👤 Профиль", callback_data="profile"),
+         InlineKeyboardButton("💰 Пополнить", callback_data="deposit_menu")],
+        [InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu"),
+         InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo")],
+        [InlineKeyboardButton("📜 Правила", callback_data="rules")]
     ]
     if user_id in ADMIN_IDS:
-        keyboard_rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel", style="danger")])
+        keyboard_rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
 
     kb = InlineKeyboardMarkup(keyboard_rows)
     text = (f"🌟 Добро пожаловать в {BOT_NAME}!\n\n"
@@ -1622,17 +1623,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "casino_menu":
         text = "🎰 Казино\n\nВыберите игру:"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🪙 ОРЁЛ/РЕШКА", callback_data="game_flip", style="primary"),
-             InlineKeyboardButton("💀 РУССКАЯ РУЛЕТКА", callback_data="game_roulette", style="danger")],
-            [InlineKeyboardButton("🎰 СЛОТЫ", callback_data="game_slots", style="primary"),
-             InlineKeyboardButton("💣 МИННОЕ ПОЛЕ", callback_data="game_mines", style="primary")],
-            [InlineKeyboardButton("🎲 КОСТИ", callback_data="game_dice_classic", style="primary"),
-             InlineKeyboardButton("⚽ ФУТБОЛ", callback_data="game_football", style="primary")],
-            [InlineKeyboardButton("🏀 БАСКЕТБОЛ", callback_data="game_basketball", style="primary"),
-             InlineKeyboardButton("🎯 ДАРТС", callback_data="game_darts", style="primary")],
-            [InlineKeyboardButton("🎳 БОУЛИНГ", callback_data="game_bowling", style="primary")],
-            [InlineKeyboardButton("📜 Правила", callback_data="rules", style="primary"),
-             InlineKeyboardButton("◀️ Назад", callback_data="main_menu", style="danger")]
+            [InlineKeyboardButton("🪙 ОРЁЛ/РЕШКА", callback_data="game_flip"),
+             InlineKeyboardButton("💀 РУССКАЯ РУЛЕТКА", callback_data="game_roulette")],
+            [InlineKeyboardButton("🎰 СЛОТЫ", callback_data="game_slots"),
+             InlineKeyboardButton("💣 МИННОЕ ПОЛЕ", callback_data="game_mines")],
+            [InlineKeyboardButton("🎲 КОСТИ", callback_data="game_dice_classic"),
+             InlineKeyboardButton("⚽ ФУТБОЛ", callback_data="game_football")],
+            [InlineKeyboardButton("🏀 БАСКЕТБОЛ", callback_data="game_basketball"),
+             InlineKeyboardButton("🎯 ДАРТС", callback_data="game_darts")],
+            [InlineKeyboardButton("🎳 БОУЛИНГ", callback_data="game_bowling")],
+            [InlineKeyboardButton("📜 Правила", callback_data="rules"),
+             InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
         await edit_message(query, text, kb)
 
@@ -1669,13 +1670,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "game_mines":
         text = "💣 Минное поле\n\nВыберите количество мин:"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("3 мины (x1.2)", callback_data="mines_set_3", style="primary"),
-             InlineKeyboardButton("4 мины (x1.45)", callback_data="mines_set_4", style="primary"),
-             InlineKeyboardButton("5 мин (x1.75)", callback_data="mines_set_5", style="primary")],
-            [InlineKeyboardButton("6 мин (x2.2)", callback_data="mines_set_6", style="primary"),
-             InlineKeyboardButton("7 мин (x2.8)", callback_data="mines_set_7", style="danger"),
-             InlineKeyboardButton("8 мин (x4.0)", callback_data="mines_set_8", style="danger")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu", style="danger")]
+            [InlineKeyboardButton("3 мины (x1.2)", callback_data="mines_set_3"),
+             InlineKeyboardButton("4 мины (x1.45)", callback_data="mines_set_4"),
+             InlineKeyboardButton("5 мин (x1.75)", callback_data="mines_set_5")],
+            [InlineKeyboardButton("6 мин (x2.2)", callback_data="mines_set_6"),
+             InlineKeyboardButton("7 мин (x2.8)", callback_data="mines_set_7"),
+             InlineKeyboardButton("8 мин (x4.0)", callback_data="mines_set_8")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="casino_menu")]
         ])
         await edit_message(query, text, kb)
 
@@ -1745,8 +1746,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for item in items:
             text += f"• {item['name']} — {item['chance']}% — ${item['value']:.2f}\n"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"📦 Открыть за ${case[2]:.2f} (баланс)", callback_data="open_case_balance", style="success")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu", style="danger")]
+            [InlineKeyboardButton(f"📦 Открыть за ${case[2]:.2f} (баланс)", callback_data="open_case_balance")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
         if CASE_IMAGE_ID:
             try:
@@ -1813,8 +1814,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• Максимальная сумма: ${MAX_DEPOSIT_DOLLARS:.2f}\n"
                 f"• Зачисление после 1 подтверждения сети")
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💎 CryptoBot", callback_data="deposit_crypto", style="success")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu", style="danger")]
+            [InlineKeyboardButton("💎 CryptoBot", callback_data="deposit_crypto")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
         await edit_message(query, text, kb)
 
@@ -1829,18 +1830,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💳 CryptoBot ID: {user[8] or 'не указан'}\n\n"
                 f"Минимум $5.00, комиссия 0%")
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📱 Telegram", callback_data="withdraw_telegram", style="primary"),
-             InlineKeyboardButton("💳 CryptoBot", callback_data="withdraw_crypto", style="primary")],
-            [InlineKeyboardButton("⚙️ Настройки", callback_data="withdraw_settings", style="primary")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu", style="danger")]
+            [InlineKeyboardButton("📱 Telegram", callback_data="withdraw_telegram"),
+             InlineKeyboardButton("💳 CryptoBot", callback_data="withdraw_crypto")],
+            [InlineKeyboardButton("⚙️ Настройки", callback_data="withdraw_settings")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
         await edit_message(query, text, kb)
 
     elif data == "withdraw_settings":
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📱 Указать Telegram", callback_data="set_telegram", style="primary")],
-            [InlineKeyboardButton("💳 Указать CryptoBot ID", callback_data="set_crypto", style="primary")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="withdraw_menu", style="danger")]
+            [InlineKeyboardButton("📱 Указать Telegram", callback_data="set_telegram")],
+            [InlineKeyboardButton("💳 Указать CryptoBot ID", callback_data="set_crypto")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="withdraw_menu")]
         ])
         await edit_message(query, "⚙️ Настройки", kb)
 
@@ -1886,17 +1887,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎮 Игр: {stats['total_games']}\n\n"
                 f"⏳ Заявок на вывод: {ps}")
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👥 Пользователи (CSV)", callback_data="admin_users_csv", style="primary")],
-            [InlineKeyboardButton("⏳ Заявки вывод", callback_data="admin_withdrawals", style="primary")],
-            [InlineKeyboardButton("🎟️ Промокоды", callback_data="admin_promocodes", style="primary")],
-            [InlineKeyboardButton("🔨 Баны", callback_data="admin_bans", style="danger")],
-            [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast", style="primary")],
-            [InlineKeyboardButton("🖼️ Картинки", callback_data="admin_images", style="primary")],
-            [InlineKeyboardButton("🎮 Настройка игр", callback_data="admin_game_settings", style="primary")],
-            [InlineKeyboardButton("📊 Статистика за день", callback_data="admin_stats_daily", style="primary")],
-            [InlineKeyboardButton("📊 Статистика за неделю", callback_data="admin_stats_weekly", style="primary")],
-            [InlineKeyboardButton("📊 Статистика за месяц", callback_data="admin_stats_monthly", style="primary")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu", style="danger")]
+            [InlineKeyboardButton("👥 Пользователи (CSV)", callback_data="admin_users_csv")],
+            [InlineKeyboardButton("⏳ Заявки вывод", callback_data="admin_withdrawals")],
+            [InlineKeyboardButton("🎟️ Промокоды", callback_data="admin_promocodes")],
+            [InlineKeyboardButton("🔨 Баны", callback_data="admin_bans")],
+            [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
+            [InlineKeyboardButton("🖼️ Картинки", callback_data="admin_images")],
+            [InlineKeyboardButton("🎮 Настройка игр", callback_data="admin_game_settings")],
+            [InlineKeyboardButton("📊 Статистика за день", callback_data="admin_stats_daily")],
+            [InlineKeyboardButton("📊 Статистика за неделю", callback_data="admin_stats_weekly")],
+            [InlineKeyboardButton("📊 Статистика за месяц", callback_data="admin_stats_monthly")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ])
         await edit_message(query, text, kb)
 
@@ -1925,10 +1926,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for w in ws[:5]:
             text += f"🆔 #{w[0]}\n👤 @{w[7]}\n💰 ${w[2]:.2f}\n🕐 {w[6][:16]}\n\n"
             kb_rows.append([
-                InlineKeyboardButton(f"✅ Принять #{w[0]}", callback_data=f"approve_withdrawal_{w[0]}", style="success"),
-                InlineKeyboardButton(f"❌ Отклонить #{w[0]}", callback_data=f"reject_withdrawal_{w[0]}", style="danger")
+                InlineKeyboardButton(f"✅ Принять #{w[0]}", callback_data=f"approve_withdrawal_{w[0]}"),
+                InlineKeyboardButton(f"❌ Отклонить #{w[0]}", callback_data=f"reject_withdrawal_{w[0]}")
             ])
-        kb_rows.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel", style="danger")])
+        kb_rows.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
         kb = InlineKeyboardMarkup(kb_rows)
         await edit_message(query, text, kb)
 
@@ -1940,7 +1941,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.cursor.execute('SELECT user_id, amount FROM withdrawals WHERE id = ?', (wid,))
             uid, amt = db.cursor.fetchone()
             await context.bot.send_message(uid, f"✅ Заявка на вывод одобрена!\n💰 ${amt:.2f}\n⏳ Ожидайте выдачи.")
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Выдано #{wid}", callback_data=f"complete_withdrawal_{wid}", style="success")]])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Выдано #{wid}", callback_data=f"complete_withdrawal_{wid}")]])
             await edit_message(query, f"✅ Заявка #{wid} одобрена. После выдачи нажмите кнопку.", kb)
         else:
             await edit_message(query, "❌ Ошибка")
@@ -1974,8 +1975,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for p in promos:
             text += f"• `{p[1]}` — ${p[2]:.2f} | {p[5]}/{p[4]}\n"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Создать", callback_data="admin_create_promo", style="success")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel", style="danger")]
+            [InlineKeyboardButton("➕ Создать", callback_data="admin_create_promo")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]
         ])
         await edit_message(query, text, kb)
 
@@ -1998,8 +1999,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb_rows = []
         for b in banned:
             text += f"• {b[2]} (@{b[1]}) — ID: {b[0]}\n"
-            kb_rows.append([InlineKeyboardButton(f"✅ Разбанить {b[0]}", callback_data=f"unban_{b[0]}", style="success")])
-        kb_rows.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel", style="danger")])
+            kb_rows.append([InlineKeyboardButton(f"✅ Разбанить {b[0]}", callback_data=f"unban_{b[0]}")])
+        kb_rows.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")])
         kb = InlineKeyboardMarkup(kb_rows)
         await edit_message(query, text, kb)
 
@@ -2027,9 +2028,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Приветствие: {'✅' if WELCOME_IMAGE_ID else '❌'}\n"
                 f"Кейс: {'✅' if CASE_IMAGE_ID else '❌'}")
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🖼️ Загрузить приветствие", callback_data="upload_welcome", style="primary")],
-            [InlineKeyboardButton("🖼️ Загрузить кейс", callback_data="upload_case", style="primary")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel", style="danger")]
+            [InlineKeyboardButton("🖼️ Загрузить приветствие", callback_data="upload_welcome")],
+            [InlineKeyboardButton("🖼️ Загрузить кейс", callback_data="upload_case")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]
         ])
         await edit_message(query, text, kb)
 
@@ -2051,15 +2052,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         text = "🎮 *Настройка коэффициентов игр*\n\nВыберите игру для настройки:"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🪙 Орёл и Решка", callback_data="game_setting_flip", style="primary")],
-            [InlineKeyboardButton("🎲 Кости (число)", callback_data="game_setting_dice_num", style="primary")],
-            [InlineKeyboardButton("🎲 Кости (чёт/нечёт)", callback_data="game_setting_dice_eo", style="primary")],
-            [InlineKeyboardButton("🎰 Слоты", callback_data="game_setting_slots", style="primary")],
-            [InlineKeyboardButton("⚽ Футбол", callback_data="game_setting_football", style="primary")],
-            [InlineKeyboardButton("🏀 Баскетбол", callback_data="game_setting_basketball", style="primary")],
-            [InlineKeyboardButton("🎯 Дартс", callback_data="game_setting_darts", style="primary")],
-            [InlineKeyboardButton("🎳 Боулинг", callback_data="game_setting_bowling", style="primary")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel", style="danger")]
+            [InlineKeyboardButton("🪙 Орёл и Решка", callback_data="game_setting_flip")],
+            [InlineKeyboardButton("🎲 Кости (число)", callback_data="game_setting_dice_num")],
+            [InlineKeyboardButton("🎲 Кости (чёт/нечёт)", callback_data="game_setting_dice_eo")],
+            [InlineKeyboardButton("🎰 Слоты", callback_data="game_setting_slots")],
+            [InlineKeyboardButton("⚽ Футбол", callback_data="game_setting_football")],
+            [InlineKeyboardButton("🏀 Баскетбол", callback_data="game_setting_basketball")],
+            [InlineKeyboardButton("🎯 Дартс", callback_data="game_setting_darts")],
+            [InlineKeyboardButton("🎳 Боулинг", callback_data="game_setting_bowling")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]
         ])
         await edit_message(query, text, kb)
 
@@ -2109,18 +2110,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "main_menu":
         current_user = db.get_user(user_id)
         kb_rows = [
-            [InlineKeyboardButton("🎰 Казино", callback_data="casino_menu", style="primary"),
-             InlineKeyboardButton("📦 Кейс Сакура", callback_data="case_menu", style="primary")],
-            [InlineKeyboardButton("🎁 Бонус", callback_data="daily_bonus", style="success"),
-             InlineKeyboardButton("👥 Рефералы", callback_data="referral", style="primary")],
-            [InlineKeyboardButton("👤 Профиль", callback_data="profile", style="primary"),
-             InlineKeyboardButton("💰 Пополнить", callback_data="deposit_menu", style="success")],
-            [InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu", style="primary"),
-             InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo", style="primary")],
-            [InlineKeyboardButton("📜 Правила", callback_data="rules", style="primary")]
+            [InlineKeyboardButton("🎰 Казино", callback_data="casino_menu"),
+             InlineKeyboardButton("📦 Кейс Сакура", callback_data="case_menu")],
+            [InlineKeyboardButton("🎁 Бонус", callback_data="daily_bonus"),
+             InlineKeyboardButton("👥 Рефералы", callback_data="referral")],
+            [InlineKeyboardButton("👤 Профиль", callback_data="profile"),
+             InlineKeyboardButton("💰 Пополнить", callback_data="deposit_menu")],
+            [InlineKeyboardButton("💸 Вывод", callback_data="withdraw_menu"),
+             InlineKeyboardButton("🎟️ Промокод", callback_data="activate_promo")],
+            [InlineKeyboardButton("📜 Правила", callback_data="rules")]
         ]
         if user_id in ADMIN_IDS:
-            kb_rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel", style="danger")])
+            kb_rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin_panel")])
         kb = InlineKeyboardMarkup(kb_rows)
         text = f"🌟 {BOT_NAME}\n\n🆔 ID: {user_id}\n💰 Баланс: ${current_user[3]:.2f}"
         await edit_message(query, text, kb)
@@ -2222,8 +2223,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Заявка #{wid} создана")
             for aid in ADMIN_IDS:
                 kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(f"✅ Принять #{wid}", callback_data=f"approve_withdrawal_{wid}", style="success"),
-                     InlineKeyboardButton(f"❌ Отклонить #{wid}", callback_data=f"reject_withdrawal_{wid}", style="danger")]
+                    [InlineKeyboardButton(f"✅ Принять #{wid}", callback_data=f"approve_withdrawal_{wid}"),
+                     InlineKeyboardButton(f"❌ Отклонить #{wid}", callback_data=f"reject_withdrawal_{wid}")]
                 ])
                 await context.bot.send_message(
                     aid,
@@ -2248,8 +2249,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Заявка #{wid} создана")
             for aid in ADMIN_IDS:
                 kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(f"✅ Принять #{wid}", callback_data=f"approve_withdrawal_{wid}", style="success"),
-                     InlineKeyboardButton(f"❌ Отклонить #{wid}", callback_data=f"reject_withdrawal_{wid}", style="danger")]
+                    [InlineKeyboardButton(f"✅ Принять #{wid}", callback_data=f"approve_withdrawal_{wid}"),
+                     InlineKeyboardButton(f"❌ Отклонить #{wid}", callback_data=f"reject_withdrawal_{wid}")]
                 ])
                 await context.bot.send_message(
                     aid,
