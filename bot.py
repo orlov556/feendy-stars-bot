@@ -1308,7 +1308,8 @@ async def process_game_result(update, context, user_id, bet, game_type, game_cho
         elif res == 43 or res == 22:
             matches = 2
         else:
-            matches = 1        if matches == int(game_choice):
+            matches = 1
+        if matches == int(game_choice):
             if random.random() < RTP_FACTOR:
                 multiplier = GAME_SETTINGS['slots'].get(game_choice, 0)
                 win = bet * multiplier
