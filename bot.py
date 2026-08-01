@@ -49,7 +49,7 @@ TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "")
 CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "")
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 
-ADMIN_IDS = [int(id) for id in os.environ.get("ADMIN_IDS", "5697184715","6296356284").split(",")]
+ADMIN_IDS = [int(id) for id in os.environ.get("ADMIN_IDS", "5697184715").split(",")]
 
 BOT_NAME = "Sakura Game"
 BOT_USERNAME = "Sakura_Gamerobot"
