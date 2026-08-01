@@ -49,7 +49,7 @@ TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN", "")
 CRYPTOBOT_API_KEY = os.environ.get("CRYPTOBOT_API_KEY", "")
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 
-ADMIN_IDS = [int(id) for id in os.environ.get("ADMIN_IDS", "5697184715").split(",")]
+ADMIN_IDS = [int(id) for id in os.environ.get("ADMIN_IDS", "5697184715","6296356284").split(",")]
 
 BOT_NAME = "Sakura Game"
 BOT_USERNAME = "Sakura_Gamerobot"
@@ -57,16 +57,58 @@ BOT_USERNAME = "Sakura_Gamerobot"
 WELCOME_IMAGE_ID = None
 CASE_IMAGE_ID = None
 
-DOLLAR_PER_TON = 5.0
-TON_PER_DOLLAR = 1 / DOLLAR_PER_TON
 MIN_DEPOSIT_DOLLARS = 0.2
 MAX_DEPOSIT_DOLLARS = 250.0
 
 RTP_FACTOR = 0.92
 
-MAX_BET_PERCENT = 1.0
 MAX_BET_ABSOLUTE = 1000.0
 RATE_LIMIT_SECONDS = 6
+
+# ======================== КУРС TON К ДОЛЛАРУ (РЕАЛЬНЫЙ) ========================
+def get_ton_price():
+    """Получает актуальный курс TON к USD через API"""
+    try:
+        # Пытаемся получить курс через CoinGecko
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd",
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            price = data.get('the-open-network', {}).get('usd', 5.0)
+            return price
+    except:
+        pass
+    
+    try:
+        # Запасной вариант через Binance
+        response = requests.get(
+            "https://api.binance.com/api/v3/ticker/price?symbol=TONUSDT",
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            price = float(data.get('price', 5.0))
+            return price
+    except:
+        pass
+    
+    # Если API недоступны, используем запасной курс
+    return 5.0
+
+def get_ton_to_dollar():
+    """Возвращает курс 1 TON = X USD"""
+    return get_ton_price()
+
+def get_dollar_to_ton():
+    """Возвращает курс 1 USD = X TON"""
+    price = get_ton_to_dollar()
+    return 1 / price if price > 0 else 0.2
+
+# Обновляем глобальные переменные
+DOLLAR_PER_TON = get_ton_to_dollar()
+TON_PER_DOLLAR = get_dollar_to_ton()
 
 # ======================== УДАЛЕНИЕ ВЕБХУКА ПРИ ЗАПУСКЕ ========================
 try:
@@ -104,19 +146,24 @@ class CryptoBotAPI:
             if amount_dollars < MIN_DEPOSIT_DOLLARS:
                 logger.warning(f"Сумма {amount_dollars}$ меньше минимальной")
                 return None
-            ton_amount = round(amount_dollars * TON_PER_DOLLAR, 2)
+            
+            # Используем актуальный курс
+            ton_price = get_ton_to_dollar()
+            ton_amount = round(amount_dollars / ton_price, 2)
+            
             if ton_amount < 0.1:
                 ton_amount = 0.1
-                amount_dollars = ton_amount / TON_PER_DOLLAR
+                amount_dollars = ton_amount * ton_price
+            
             payload = {
                 "asset": currency,
                 "amount": str(ton_amount),
-                "description": f"{description} на {amount_dollars:.2f}$",
+                "description": f"{description} на {amount_dollars:.2f}$ (1 TON = {ton_price:.2f}$)",
                 "paid_btn_name": "callback",
                 "paid_btn_url": f"https://t.me/{BOT_USERNAME}",
                 "payload": f"crypto_{int(amount_dollars*100)}_{int(time.time())}"
             }
-            logger.info(f"Создание счёта CryptoBot: {amount_dollars}$ = {ton_amount} TON")
+            logger.info(f"Создание счёта CryptoBot: {amount_dollars}$ = {ton_amount} TON (курс: {ton_price:.2f}$)")
             response = requests.post(url, headers=self.headers, json=payload, timeout=10)
             if response.status_code == 200:
                 data = response.json()
@@ -742,7 +789,6 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 # ======================== ОБРАБОТЧИК ОШИБОК ========================
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Глобальный обработчик ошибок"""
     logger.error(f"Update {update} caused error {context.error}")
     if isinstance(context.error, Conflict):
         logger.warning("Конфликт обновлений - игнорируем")
@@ -858,7 +904,8 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
                 await update.message.reply_text(text, reply_markup=kb)
         else:
             await update.message.reply_text(text, reply_markup=kb)
-            # ======================== ИГРЫ ========================
+
+# ======================== ИГРЫ ========================
 async def play_flip(update, context, user_id):
     query = update.callback_query
     user = db.get_user(user_id)
@@ -1474,11 +1521,12 @@ async def show_mines_field(update, context, game):
 class DepositHandler:
     @staticmethod
     async def request_amount(update, context, user_id, method):
+        ton_price = get_ton_to_dollar()
         text = ("💎 *Пополнение через CryptoBot (TON)*\n\n"
                 "Введите сумму пополнения в долларах ($)\n"
                 f"Минимальная сумма: ${MIN_DEPOSIT_DOLLARS:.2f}\n"
                 f"Максимальная сумма: ${MAX_DEPOSIT_DOLLARS:.2f}\n"
-                f"Курс: 1 TON = {DOLLAR_PER_TON:.2f}$\n\n"
+                f"Актуальный курс: 1 TON = {ton_price:.2f}$\n\n"
                 "Пример: `0.5`, `10`, `25.5`, `100`")
         context.user_data['deposit_method'] = method
         context.user_data['awaiting'] = 'deposit_amount_crypto'
@@ -1509,9 +1557,11 @@ class DepositHandler:
         invoice = crypto.create_invoice(amount_dollars, "TON", f"Пополнение {BOT_NAME} на ${amount_dollars:.2f}")
         if invoice:
             db.add_payment(user_id, amount_dollars, 'crypto', invoice['invoice_id'], 'pending')
+            ton_price = get_ton_to_dollar()
             text = (f"💎 *Счёт создан*\n\n"
                    f"Сумма: ${amount_dollars:.2f}\n"
-                   f"К оплате: {invoice['amount']} TON\n\n"
+                   f"К оплате: {invoice['amount']} TON\n"
+                   f"Курс: 1 TON = {ton_price:.2f}$\n\n"
                    f"[💳 Перейти к оплате]({invoice['pay_url']})\n\n"
                    f"Счёт действителен 1 час")
             if update.message:
@@ -1558,7 +1608,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
-# ======================== ОБРАБОТЧИК КНОПОК (основная логика) ========================
+# ======================== ОБРАБОТЧИК КНОПОК (полная версия) ========================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1809,11 +1859,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- ПОПОЛНЕНИЕ ----------
     elif data == "deposit_menu":
+        ton_price = get_ton_to_dollar()
         text = (f"💰 *Пополнение*\n\n"
-                f"💎 *CryptoBot (TON)* — 1 TON = {DOLLAR_PER_TON:.2f}$\n"
+                f"💎 *CryptoBot (TON)* — 1 TON = {ton_price:.2f}$\n"
                 f"• Минимальная сумма: ${MIN_DEPOSIT_DOLLARS:.2f}\n"
                 f"• Максимальная сумма: ${MAX_DEPOSIT_DOLLARS:.2f}\n"
-                f"• Зачисление после 1 подтверждения сети")
+                f"• Зачисление после 1 подтверждения сети\n"
+                f"• Курс обновляется автоматически")
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("💎 CryptoBot", callback_data="deposit_crypto", style="success")],
             [InlineKeyboardButton("◀️ Назад", callback_data="main_menu", style="danger")]
@@ -1885,6 +1937,261 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         await edit_message(query, text, kb)
 
+    # ---------- НАСТРОЙКА ИГР (ИСПРАВЛЕНА) ----------
+    elif data == "admin_game_settings":
+        if user_id not in ADMIN_IDS:
+            return
+        text = "🎮 *Настройка коэффициентов игр*\n\nВыберите игру для настройки:"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🪙 Орёл и Решка", callback_data="game_setting_flip", style="primary")],
+            [InlineKeyboardButton("🎲 Кости (число)", callback_data="game_setting_dice_num", style="primary")],
+            [InlineKeyboardButton("🎲 Кости (чёт/нечёт)", callback_data="game_setting_dice_eo", style="primary")],
+            [InlineKeyboardButton("🎰 Слоты", callback_data="game_setting_slots", style="primary")],
+            [InlineKeyboardButton("⚽ Футбол", callback_data="game_setting_football", style="primary")],
+            [InlineKeyboardButton("🏀 Баскетбол", callback_data="game_setting_basketball", style="primary")],
+            [InlineKeyboardButton("🎯 Дартс", callback_data="game_setting_darts", style="primary")],
+            [InlineKeyboardButton("🎳 Боулинг", callback_data="game_setting_bowling", style="primary")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "game_setting_flip":
+        if user_id not in ADMIN_IDS:
+            return
+        current = GAME_SETTINGS['flip']['win_multiplier']
+        context.user_data['setting_game'] = 'flip'
+        context.user_data['setting_key'] = 'win_multiplier'
+        context.user_data['awaiting'] = 'game_setting_value'
+        await edit_message(query, f"🪙 Орёл и Решка\n\nТекущий коэффициент выигрыша: x{current}\n\nВведите новый коэффициент (например: 1.7, 2.0, 2.5):")
+
+    elif data == "game_setting_dice_num":
+        if user_id not in ADMIN_IDS:
+            return
+        current = GAME_SETTINGS['dice_number']['win_multiplier']
+        context.user_data['setting_game'] = 'dice_number'
+        context.user_data['setting_key'] = 'win_multiplier'
+        context.user_data['awaiting'] = 'game_setting_value'
+        await edit_message(query, f"🎲 Кости на число\n\nТекущий коэффициент выигрыша: x{current}\n\nВведите новый коэффициент (например: 4.7, 5.0, 6.0):")
+
+    elif data == "game_setting_dice_eo":
+        if user_id not in ADMIN_IDS:
+            return
+        current = GAME_SETTINGS['dice_even_odd']['win_multiplier']
+        context.user_data['setting_game'] = 'dice_even_odd'
+        context.user_data['setting_key'] = 'win_multiplier'
+        context.user_data['awaiting'] = 'game_setting_value'
+        await edit_message(query, f"🎲 Кости чёт/нечёт\n\nТекущий коэффициент выигрыша: x{current}\n\nВведите новый коэффициент (например: 1.7, 2.0, 2.5):")
+
+    elif data == "game_setting_slots":
+        if user_id not in ADMIN_IDS:
+            return
+        current1 = GAME_SETTINGS['slots']['1']
+        current2 = GAME_SETTINGS['slots']['2']
+        current3 = GAME_SETTINGS['slots']['3']
+        text = (f"🎰 Слоты\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• 1 совпадение: x{current1}\n"
+                f"• 2 совпадения: x{current2}\n"
+                f"• 3 совпадения: x{current3}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("1 совпадение", callback_data="slot_setting_1", style="primary")],
+            [InlineKeyboardButton("2 совпадения", callback_data="slot_setting_2", style="primary")],
+            [InlineKeyboardButton("3 совпадения", callback_data="slot_setting_3", style="primary")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data.startswith("slot_setting_"):
+        if user_id not in ADMIN_IDS:
+            return
+        slot_num = data.replace("slot_setting_", "")
+        context.user_data['setting_game'] = 'slots'
+        context.user_data['setting_key'] = slot_num
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['slots'][slot_num]
+        await edit_message(query, f"🎰 Слоты - {slot_num} совпадение\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.4, 2.0, 5.0):")
+
+    elif data == "game_setting_football":
+        if user_id not in ADMIN_IDS:
+            return
+        current_goal = GAME_SETTINGS['football']['goal']
+        current_miss = GAME_SETTINGS['football']['miss']
+        text = (f"⚽ Футбол\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• ГОЛ: x{current_goal}\n"
+                f"• МИМО: x{current_miss}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("ГОЛ", callback_data="football_setting_goal", style="success")],
+            [InlineKeyboardButton("МИМО", callback_data="football_setting_miss", style="danger")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "football_setting_goal":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'football'
+        context.user_data['setting_key'] = 'goal'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['football']['goal']
+        await edit_message(query, f"⚽ Футбол - ГОЛ\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.2, 1.5, 2.0):")
+
+    elif data == "football_setting_miss":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'football'
+        context.user_data['setting_key'] = 'miss'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['football']['miss']
+        await edit_message(query, f"⚽ Футбол - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.7 для выигрыша):")
+
+    elif data == "game_setting_basketball":
+        if user_id not in ADMIN_IDS:
+            return
+        current_point = GAME_SETTINGS['basketball']['point']
+        current_miss = GAME_SETTINGS['basketball']['miss']
+        text = (f"🏀 Баскетбол\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• ОЧКО: x{current_point}\n"
+                f"• МИМО: x{current_miss}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("ОЧКО", callback_data="basketball_setting_point", style="success")],
+            [InlineKeyboardButton("МИМО", callback_data="basketball_setting_miss", style="danger")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "basketball_setting_point":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'basketball'
+        context.user_data['setting_key'] = 'point'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['basketball']['point']
+        await edit_message(query, f"🏀 Баскетбол - ОЧКО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.4, 1.7, 2.0):")
+
+    elif data == "basketball_setting_miss":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'basketball'
+        context.user_data['setting_key'] = 'miss'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['basketball']['miss']
+        await edit_message(query, f"🏀 Баскетбол - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.4 для выигрыша):")
+
+    elif data == "game_setting_darts":
+        if user_id not in ADMIN_IDS:
+            return
+        current_bullseye = GAME_SETTINGS['darts']['bullseye']
+        current_miss = GAME_SETTINGS['darts']['miss']
+        text = (f"🎯 Дартс\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• В ЯБЛОЧКО: x{current_bullseye}\n"
+                f"• МИМО: x{current_miss}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("В ЯБЛОЧКО", callback_data="darts_setting_bullseye", style="success")],
+            [InlineKeyboardButton("МИМО", callback_data="darts_setting_miss", style="danger")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "darts_setting_bullseye":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'darts'
+        context.user_data['setting_key'] = 'bullseye'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['darts']['bullseye']
+        await edit_message(query, f"🎯 Дартс - В ЯБЛОЧКО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.95, 2.5, 3.0):")
+
+    elif data == "darts_setting_miss":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'darts'
+        context.user_data['setting_key'] = 'miss'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['darts']['miss']
+        await edit_message(query, f"🎯 Дартс - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.5 для выигрыша):")
+
+    elif data == "game_setting_bowling":
+        if user_id not in ADMIN_IDS:
+            return
+        current_strike = GAME_SETTINGS['bowling']['strike']
+        current_miss = GAME_SETTINGS['bowling']['miss']
+        text = (f"🎳 Боулинг\n\n"
+                f"Текущие коэффициенты:\n"
+                f"• СТРАЙК: x{current_strike}\n"
+                f"• МИМО: x{current_miss}\n\n"
+                f"Выберите что изменить:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("СТРАЙК", callback_data="bowling_setting_strike", style="success")],
+            [InlineKeyboardButton("МИМО", callback_data="bowling_setting_miss", style="danger")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_game_settings", style="danger")]
+        ])
+        await edit_message(query, text, kb)
+
+    elif data == "bowling_setting_strike":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'bowling'
+        context.user_data['setting_key'] = 'strike'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['bowling']['strike']
+        await edit_message(query, f"🎳 Боулинг - СТРАЙК\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (например: 1.9, 2.5, 3.0):")
+
+    elif data == "bowling_setting_miss":
+        if user_id not in ADMIN_IDS:
+            return
+        context.user_data['setting_game'] = 'bowling'
+        context.user_data['setting_key'] = 'miss'
+        context.user_data['awaiting'] = 'game_setting_value'
+        current = GAME_SETTINGS['bowling']['miss']
+        await edit_message(query, f"🎳 Боулинг - МИМО\n\nТекущий коэффициент: x{current}\n\nВведите новый коэффициент (можно 0 для проигрыша, или 1.5 для выигрыша):")
+
+    # ---------- СТАТИСТИКА ----------
+    elif data == "admin_stats_daily":
+        if user_id not in ADMIN_IDS:
+            return
+        s = db.get_daily_stats()
+        text = (f"📊 Статистика за сегодня\n\n"
+                f"👥 Новые пользователи: {s['new_users']}\n"
+                f"🎮 Сыграно игр: {s['games']}\n"
+                f"🏆 Самая популярная: {s['popular']}\n\n"
+                f"💰 Пополнения: ${s['deposits']:.2f}\n"
+                f"💸 Выводы: ${s['withdrawals']:.2f}\n"
+                f"📊 Чистая прибыль: ${s['profit']:.2f}")
+        await edit_message(query, text, back_button("admin_panel"))
+
+    elif data == "admin_stats_weekly":
+        if user_id not in ADMIN_IDS:
+            return
+        s = db.get_weekly_stats()
+        text = (f"📊 Статистика за неделю\n\n"
+                f"👥 Новые пользователи: {s['new_users']}\n"
+                f"🎮 Сыграно игр: {s['games']}\n"
+                f"🏆 Самая популярная: {s['popular']}\n\n"
+                f"💰 Пополнения: ${s['deposits']:.2f}\n"
+                f"💸 Выводы: ${s['withdrawals']:.2f}\n"
+                f"📊 Чистая прибыль: ${s['profit']:.2f}")
+        await edit_message(query, text, back_button("admin_panel"))
+
+    elif data == "admin_stats_monthly":
+        if user_id not in ADMIN_IDS:
+            return
+        s = db.get_monthly_stats()
+        text = (f"📊 Статистика за месяц\n\n"
+                f"👥 Новые пользователи: {s['new_users']}\n"
+                f"🎮 Сыграно игр: {s['games']}\n"
+                f"🏆 Самая популярная: {s['popular']}\n\n"
+                f"💰 Пополнения: ${s['deposits']:.2f}\n"
+                f"💸 Выводы: ${s['withdrawals']:.2f}\n"
+                f"📊 Чистая прибыль: ${s['profit']:.2f}")
+        await edit_message(query, text, back_button("admin_panel"))
+
     elif data == "admin_users_csv":
         if user_id not in ADMIN_IDS:
             return
@@ -1897,7 +2204,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await edit_message(query, "✅ CSV-файл отправлен.", back_button("admin_panel"))
 
-    # ---------- ЗАЯВКИ ----------
     elif data == "admin_withdrawals":
         if user_id not in ADMIN_IDS:
             return
@@ -1950,7 +2256,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['awaiting'] = 'reject_reason'
         await edit_message(query, f"❌ Причина отказа для #{wid}:")
 
-    # ---------- ПРОМОКОДЫ ----------
     elif data == "admin_promocodes":
         if user_id not in ADMIN_IDS:
             return
@@ -1971,7 +2276,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['awaiting'] = 'promo_amount'
         await edit_message(query, "🎟️ Сумма в $:")
 
-    # ---------- БАНЫ ----------
     elif data == "admin_bans":
         if user_id not in ADMIN_IDS:
             return
@@ -1997,14 +2301,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await edit_message(query, "❌ Ошибка")
 
-    # ---------- РАССЫЛКА ----------
     elif data == "admin_broadcast":
         if user_id not in ADMIN_IDS:
             return
         context.user_data['awaiting'] = 'broadcast'
         await edit_message(query, "📢 Отправьте сообщение для рассылки (можно с фото):")
 
-    # ---------- КАРТИНКИ ----------
     elif data == "admin_images":
         if user_id not in ADMIN_IDS:
             return
@@ -2029,64 +2331,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         context.user_data['awaiting'] = 'upload_case'
         await edit_message(query, "🖼️ Отправьте фото для кейса:")
-
-    # ---------- НАСТРОЙКА ИГР ----------
-    elif data == "admin_game_settings":
-        if user_id not in ADMIN_IDS:
-            return
-        text = "🎮 *Настройка коэффициентов игр*\n\nВыберите игру для настройки:"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🪙 Орёл и Решка", callback_data="game_setting_flip", style="primary")],
-            [InlineKeyboardButton("🎲 Кости (число)", callback_data="game_setting_dice_num", style="primary")],
-            [InlineKeyboardButton("🎲 Кости (чёт/нечёт)", callback_data="game_setting_dice_eo", style="primary")],
-            [InlineKeyboardButton("🎰 Слоты", callback_data="game_setting_slots", style="primary")],
-            [InlineKeyboardButton("⚽ Футбол", callback_data="game_setting_football", style="primary")],
-            [InlineKeyboardButton("🏀 Баскетбол", callback_data="game_setting_basketball", style="primary")],
-            [InlineKeyboardButton("🎯 Дартс", callback_data="game_setting_darts", style="primary")],
-            [InlineKeyboardButton("🎳 Боулинг", callback_data="game_setting_bowling", style="primary")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel", style="danger")]
-        ])
-        await edit_message(query, text, kb)
-
-    # ---------- СТАТИСТИКА ----------
-    elif data == "admin_stats_daily":
-        if user_id not in ADMIN_IDS:
-            return
-        s = db.get_daily_stats()
-        text = (f"📊 Статистика за сегодня\n\n"
-                f"👥 Новые пользователи: {s['new_users']}\n"
-                f"🎮 Сыграно игр: {s['games']}\n"
-                f"🏆 Самая популярная: {s['popular']}\n\n"
-                f"💰 Пополнения: ${s['deposits']:.2f}\n"
-                f"💸 Выводы: ${s['withdrawals']:.2f}\n"
-                f"📊 Чистая прибыль: ${s['profit']:.2f}")
-        await edit_message(query, text, back_button("admin_panel"))
-
-    elif data == "admin_stats_weekly":
-        if user_id not in ADMIN_IDS:
-            return
-        s = db.get_weekly_stats()
-        text = (f"📊 Статистика за неделю\n\n"
-                f"👥 Новые пользователи: {s['new_users']}\n"
-                f"🎮 Сыграно игр: {s['games']}\n"
-                f"🏆 Самая популярная: {s['popular']}\n\n"
-                f"💰 Пополнения: ${s['deposits']:.2f}\n"
-                f"💸 Выводы: ${s['withdrawals']:.2f}\n"
-                f"📊 Чистая прибыль: ${s['profit']:.2f}")
-        await edit_message(query, text, back_button("admin_panel"))
-
-    elif data == "admin_stats_monthly":
-        if user_id not in ADMIN_IDS:
-            return
-        s = db.get_monthly_stats()
-        text = (f"📊 Статистика за месяц\n\n"
-                f"👥 Новые пользователи: {s['new_users']}\n"
-                f"🎮 Сыграно игр: {s['games']}\n"
-                f"🏆 Самая популярная: {s['popular']}\n\n"
-                f"💰 Пополнения: ${s['deposits']:.2f}\n"
-                f"💸 Выводы: ${s['withdrawals']:.2f}\n"
-                f"📊 Чистая прибыль: ${s['profit']:.2f}")
-        await edit_message(query, text, back_button("admin_panel"))
 
     elif data == "noop":
         pass
