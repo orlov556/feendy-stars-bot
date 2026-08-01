@@ -64,7 +64,7 @@ MAX_DEPOSIT_DOLLARS = 250.0
 
 RTP_FACTOR = 0.92
 
-MAX_BET_PERCENT = 1.0  # 100% баланса
+MAX_BET_PERCENT = 1.0
 MAX_BET_ABSOLUTE = 1000.0
 RATE_LIMIT_SECONDS = 6
 
@@ -342,7 +342,6 @@ class Database:
                           ('game_settings', json.dumps(GAME_SETTINGS)))
         self.conn.commit()
 
-    # ---------- Методы работы с пользователями ----------
     def get_user(self, user_id):
         self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
         return self.cursor.fetchone()
@@ -436,7 +435,6 @@ class Database:
             return bonus
         return 0.0
 
-    # ---------- Платежи ----------
     def add_payment(self, user_id, amount, method, invoice_id=None, status='pending'):
         self.cursor.execute('''
             INSERT INTO payments (user_id, amount, method, invoice_id, status)
@@ -455,7 +453,6 @@ class Database:
             return True
         return False
 
-    # ---------- Вывод средств ----------
     def create_withdrawal(self, user_id, amount, method, wallet):
         self.cursor.execute('''
             INSERT INTO withdrawals (user_id, amount, method, wallet)
@@ -520,7 +517,6 @@ class Database:
         ''', (user_id,))
         return self.cursor.fetchall()
 
-    # ---------- Промокоды ----------
     def generate_promocode(self, amount, days_valid, max_uses, created_by):
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
         expires_at = (datetime.now() + timedelta(days=days_valid)).date().isoformat()
@@ -556,7 +552,6 @@ class Database:
         self.cursor.execute('SELECT * FROM promocodes ORDER BY created_at DESC')
         return self.cursor.fetchall()
 
-    # ---------- Статистика для админа ----------
     def _get_most_popular_game(self, since):
         self.cursor.execute('''
             SELECT game_type, COUNT(*) as cnt FROM games
@@ -645,7 +640,6 @@ class Database:
             'popular': popular
         }
 
-    # ---------- Баны ----------
     def ban_user(self, admin_id, user_id):
         admin = self.get_user(admin_id)
         if not admin or admin[10] != 1:
@@ -745,6 +739,19 @@ def signal_handler(sig, frame):
 
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
+
+# ======================== ОБРАБОТЧИК ОШИБОК ========================
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Глобальный обработчик ошибок"""
+    logger.error(f"Update {update} caused error {context.error}")
+    if isinstance(context.error, Conflict):
+        logger.warning("Конфликт обновлений - игнорируем")
+        return
+    if update and hasattr(update, 'effective_chat'):
+        try:
+            await update.effective_chat.send_message("❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
 
 # ======================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ========================
 async def edit_message(query, text, keyboard=None):
@@ -851,8 +858,7 @@ async def check_balance_and_offer(update, context, user_id, required_amount, act
                 await update.message.reply_text(text, reply_markup=kb)
         else:
             await update.message.reply_text(text, reply_markup=kb)
-
-# ======================== ИГРЫ ========================
+            # ======================== ИГРЫ ========================
 async def play_flip(update, context, user_id):
     query = update.callback_query
     user = db.get_user(user_id)
@@ -1552,7 +1558,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
-# ======================== ОБРАБОТЧИК КНОПОК ========================
+# ======================== ОБРАБОТЧИК КНОПОК (основная логика) ========================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2343,6 +2349,7 @@ def main():
         application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
         application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
         application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
+        application.add_error_handler(error_handler)
         
         print("🤖 Бот запущен!")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
